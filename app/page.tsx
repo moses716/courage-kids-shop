@@ -1,57 +1,93 @@
-import Link from "next/link";
-import Image from "next/image";
+'use client'
 
-const featuredProducts = [
-  { id: 1, name: "Kids Denim Jacket", price: "Ksh 4,350", image: "https://images.unsplash.com/photo-1622290291467-0a698f0a03c6?w=400" },
-  { id: 2, name: "Cotton T-Shirt Set", price: "Ksh 2,900", image: "https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=400" },
-  { id: 3, name: "Summer Dress", price: "Ksh 3,600", image: "https://images.unsplash.com/photo-1519238263530-099cf8d11c44?w=400" },
-  { id: 4, name: "Sneakers", price: "Ksh 5,100", image: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400" },
-];
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/utils/supabase/client'
 
-export default function Home() {
+export default function PosLogin() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
+  const router = useRouter()
+  const supabase = createClient()
+
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setErrorMsg('')
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    })
+
+    setLoading(false)
+
+    if (error) {
+      setErrorMsg(error.message)
+      return
+    }
+    
+    if (data.user) {
+      router.push('/dashboard')
+    }
+  }
+
   return (
-    <main className="min-h-screen bg-white">
-      {/* Hero */}
-      <section className="bg-gray-50 py-16 px-6 text-center">
-        <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-          Watoto Fashions
-        </h1>
-        <p className="text-lg text-gray-600 mb-8 max-w-2xl mx-auto">
-          Quality kids clothing for every season. Comfortable, durable, and stylish.
-        </p>
-        <Link href="#products" className="inline-block bg-black text-white px-6 py-3 rounded-lg hover:bg-gray-800 transition">
-          Shop Now
-        </Link>
-      </section>
-
-      {/* Products */}
-      <section id="products" className="py-16 px-6 max-w-6xl mx-auto">
-        <h2 className="text-3xl font-bold text-gray-900 mb-8">Featured Products</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-          {featuredProducts.map((product) => (
-            <div key={product.id} className="border rounded-lg overflow-hidden hover:shadow-lg transition">
-              <div className="relative h-64 w-full">
-                <Image 
-                  src={product.image} 
-                  alt={product.name} 
-                  fill 
-                  className="object-cover"
-                  unoptimized
-                />
-              </div>
-              <div className="p-4">
-                <h3 className="font-semibold text-gray-900">{product.name}</h3>
-                <p className="text-gray-600 mt-1">{product.price}</p>
-              </div>
-            </div>
-          ))}
+    <main className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+      <div className="max-w-md w-full">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">COURAGE KIDS SHOP</h1> {/* FIXED: Watoto POS → COURAGE KIDS SHOP */}
+          <p className="text-gray-600 mt-2">Ingia kuendelea na mauzo</p>
         </div>
-      </section>
 
-      {/* Footer */}
-      <footer className="bg-gray-900 text-white py-8 text-center">
-        <p>© 2026 Watoto Fashions. All rights reserved.</p>
-      </footer>
+        <form onSubmit={handleSignIn} className="bg-white p-8 rounded-xl shadow-lg">
+          {errorMsg && (
+            <div className="bg-red-50 text-red-600 p-3 rounded mb-4 text-sm">
+              {errorMsg}
+            </div>
+          )}
+
+          <div className="mb-4">
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+              Email
+            </label>
+            <input 
+              type="email"
+              id="email"
+              name="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-3 border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none" /* FIXED: added border */
+              required
+            />
+          </div>
+          
+          <div className="mb-6">
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+              Password
+            </label>
+            <input 
+              type="password"
+              id="password"
+              name="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-3 border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none" /* FIXED: added border */
+              required
+            />
+          </div>
+          
+          <button 
+            type="submit"
+            disabled={loading}
+            className="w-full bg-black text-white py-3 rounded-lg font-medium hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Inaingia...' : 'Sign In'}
+          </button>
+        </form>
+      </div>
     </main>
-  );
+  )
 }

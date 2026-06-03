@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Watoto Fashions - Kids Clothing",
+  title: "COURAGE KIDS SHOP - Kids Clothing",
   description: "Quality kids clothing for every season. Comfortable, durable, and stylish.",
 };
 

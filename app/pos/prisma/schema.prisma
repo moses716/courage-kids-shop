@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Profile {
+  id String @id @db.Uuid @default(dbgenerated("gen_random_uuid()"))
+  email String? @unique
+  role String @default("cashier")
+  fullName String? @map("full_name")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("profiles")
+}
+
+model Bale {
+  id String @id @db.Uuid @default(dbgenerated("gen_random_uuid()"))
+  sku String? @unique
+  name String
+  category String?
+  grade String?
+  origin String?
+  weightKg Int? @map("weight_kg")
+  costPrice Int @default(0) @map("cost_price")
+  sellingPrice Int @map("selling_price")
+  qtyInStock Int @default(0) @map("qty_in_stock")
+  lowStockThreshold Int @default(2) @map("low_stock_threshold")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  saleItems SaleItem[]
+  stockMovements StockMovement[]
+
+  @@map("bales")
+}
+
+model Customer {
+  id String @id @db.Uuid @default(dbgenerated("gen_random_uuid()"))
+  phone String @unique
+  name String?
+  createdAt DateTime @default(now()) @map("created_at")
+  sales Sale[]
+
+  @@map("customers")
+}
+
+model Sale {
+  id String @id @db.Uuid @default(dbgenerated("gen_random_uuid()"))
+  invoiceNo String @unique @map("invoice_no") @default(dbgenerated("'INV-' || extract(epoch from now())::bigint"))
+  customerId String? @db.Uuid @map("customer_id")
+  customerPhone String? @map("customer_phone")
+  userId String @db.Uuid @map("user_id")
+  totalAmount Int @map("total_amount")
+  discount Int @default(0)
+  paymentMethod String @default("cash") @map("payment_method")
+  status String @default("completed")
+  createdAt DateTime @default(now()) @map("created_at")
+  customer Customer? @relation(fields: [customerId], references: [id])
+  items SaleItem[]
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id String @id @db.Uuid @default(dbgenerated("gen_random_uuid()"))
+  saleId String @db.Uuid @map("sale_id")
+  baleId String @db.Uuid @map("bale_id")
+  qty Int
+  unitPrice Int @map("unit_price")
+  subtotal Int @default(dbgenerated("qty * unit_price"))
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  bale Bale @relation(fields: [baleId], references: [id])
+
+  @@map("sale_items")
+}
+
+model StockMovement {
+  id String @id @db.Uuid @default(dbgenerated("gen_random_uuid()"))
+  baleId String @db.Uuid @map("bale_id")
+  movementType String @map("movement_type")
+  qtyChange Int @map("qty_change")
+  referenceId String? @db.Uuid @map("reference_id")
+  notes String?
+  createdAt DateTime @default(now()) @map("created_at")
+  bale Bale @relation(fields: [baleId], references: [id])
+
+  @@map("stock_movements")
+}
