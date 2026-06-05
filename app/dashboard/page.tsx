@@ -61,7 +61,7 @@ export default function DashboardPage() {
       todaySales: sales?.length || 0,
       totalCustomers: customerCount || 0,
       totalProducts: productCount || 0,
-      totalRevenue: allSales?.reduce((sum, s) => sum + Number(s.total_amount), 0) || 0
+      totalRevenue: allSales?.reduce((sum: number, s: { total_amount: number | string }) => sum + Number(s.total_amount), 0) || 0
     })
     setLoading(false)
   }
