@@ -1,228 +1,287 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { createClient } from '@/utils/supabase/client' // FIXED: same client as Settings/NewSale
-import { Calendar, TrendingUp, Package, Truck, Download } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { createClient } from '@supabase/supabase-js'
+import { useRouter } from 'next/navigation'
 
-type Sale = {
-  id: string
-  invoice_no: string
-  customer_phone: string
-  total_amount: number
-  discount: number
-  created_at: string
-  payment_method: string
-  user_id: string
-}
-
-type DailyReport = {
-  date: string
-  total_sales: number
-  total_orders: number
-  cash_sales: number
-  mpesa_sales: number
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 export default function ReportsPage() {
-  const supabase = createClient()
-  const [sales, setSales] = useState<Sale[]>([])
-  const [dailyReports, setDailyReports] = useState<DailyReport[]>([])
-  const [loading, setLoading] = useState(true)
-  const [userId, setUserId] = useState('')
+  const [tab, setTab] = useState('daily')
+  const [dateFrom, setDateFrom] = useState(new Date().toISOString().split('T')[0])
+  const [dateTo, setDateTo] = useState(new Date().toISOString().split('T')[0])
+  const [loading, setLoading] = useState(false)
 
-  const today = new Date().toISOString().split('T')[0]
-  const thirtyDaysAgo = new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]
+  // Daily P&L
+  const [revenue, setRevenue] = useState(0)
+  const [costs, setCosts] = useState(0)
+  const [profit, setProfit] = useState(0)
+  const [totalSales, setTotalSales] = useState(0)
 
-  const [startDate, setStartDate] = useState(thirtyDaysAgo)
-  const [endDate, setEndDate] = useState(today)
+  // Customer Ledger
+  const [customers, setCustomers] = useState<any[]>([])
+  const [selectedCustomer, setSelectedCustomer] = useState<string>('')
+  const [customerSales, setCustomerSales] = useState<any[]>([])
+
+  // Cashier Performance
+  const [cashiers, setCashiers] = useState<any[]>([])
+
+  const router = useRouter()
 
   useEffect(() => {
-    init()
-  }, [])
+    if (tab === 'daily') loadDailyReport()
+    if (tab === 'customers') loadCustomers()
+    if (tab === 'cashiers') loadCashierReport()
+  }, [tab, dateFrom, dateTo])
 
-  const init = async () => {
-    const { data } = await supabase.auth.getUser()
-    const user = data?.user
-    if (!user) return
-    setUserId(user.id)
-    fetchReports(user.id)
-  }
+  useEffect(() => {
+    if (selectedCustomer) loadCustomerLedger()
+  }, [selectedCustomer])
 
-  const fetchReports = async (uid: string) => {
+  const loadDailyReport = async () => {
     setLoading(true)
 
-    const { data, error } = await supabase
-    .from('sales')
-    .select('*')
-    .eq('user_id', uid) // FIXED: only Maggie's sales
-    .gte('created_at', `${startDate}T00:00:00`)
-    .lte('created_at', `${endDate}T23:59:59`)
-    .order('created_at', { ascending: false })
+    // 1. Revenue from sales
+    const { data: sales } = await supabase
+   .from('sales')
+   .select('paid_amount, total_amount')
+   .gte('created_at', dateFrom + 'T00:00:00')
+   .lte('created_at', dateTo + 'T23:59:59')
 
-    if (error) {
-      alert('Error: ' + error.message)
-      setLoading(false)
-      return
+    const rev = sales?.reduce((s, i) => s + i.paid_amount, 0) || 0
+    setRevenue(rev)
+    setTotalSales(sales?.length || 0)
+
+    // 2. Bale costs for items sold in date range
+    const { data: items } = await supabase
+   .from('sales_items')
+   .select('bale_id, sales!inner(created_at)')
+   .gte('sales.created_at', dateFrom + 'T00:00:00')
+   .lte('sales.created_at', dateTo + 'T23:59:59')
+   .not('bale_id', 'is', null)
+
+    const baleIds = [...new Set(items?.map(i => i.bale_id))]
+    if (baleIds.length > 0) {
+      const { data: bales } = await supabase
+     .from('bales')
+     .select('cost_price')
+     .in('id', baleIds)
+      const cost = bales?.reduce((s, b) => s + b.cost_price, 0) || 0
+      setCosts(cost)
+      setProfit(rev - cost)
+    } else {
+      setCosts(0)
+      setProfit(rev)
     }
 
-    setSales(data || [])
-    setDailyReports(groupByDate(data || []))
     setLoading(false)
   }
 
-  useEffect(() => {
-    if (userId) fetchReports(userId)
-  }, [startDate, endDate, userId])
-
-  const groupByDate = (sales: Sale[]): DailyReport[] => {
-    const grouped: Record<string, DailyReport> = {}
-
-    sales.forEach(sale => {
-      const date = new Date(sale.created_at).toISOString().split('T')[0] // YYYY-MM-DD
-      if (!grouped[date]) {
-        grouped[date] = {
-          date,
-          total_sales: 0,
-          total_orders: 0,
-          cash_sales: 0,
-          mpesa_sales: 0
-        }
-      }
-      grouped[date].total_sales += sale.total_amount
-      grouped[date].total_orders += 1
-
-      if (sale.payment_method === 'cash') {
-        grouped[date].cash_sales += sale.total_amount
-      } else if (sale.payment_method === 'mpesa') {
-        grouped[date].mpesa_sales += sale.total_amount
-      }
-    })
-
-    return Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date))
+  const loadCustomers = async () => {
+    const { data } = await supabase
+   .from('customers')
+   .select('*')
+   .order('name')
+    setCustomers(data || [])
   }
 
-  const totalSales = sales.reduce((sum, s) => sum + s.total_amount, 0)
-  const totalOrders = sales.length
-  const totalCash = sales.filter(s => s.payment_method === 'cash').reduce((sum, s) => sum + s.total_amount, 0)
-  const totalMpesa = sales.filter(s => s.payment_method === 'mpesa').reduce((sum, s) => sum + s.total_amount, 0)
-  const avgOrder = totalOrders > 0? totalSales / totalOrders : 0
+  const loadCustomerLedger = async () => {
+    setLoading(true)
+    const { data } = await supabase
+   .from('sales')
+   .select(`
+      *,
+      sales_items(item_description, original_price, paid_amount, status)
+    `)
+   .eq('customer_id', selectedCustomer)
+   .order('created_at', { ascending: false })
+   .limit(50)
 
-  const exportCSV = () => {
-    const headers = ['Date', 'Orders', 'Total Sales Ksh', 'Cash Ksh', 'M-Pesa Ksh', 'Avg Order Ksh']
-    const rows = dailyReports.map(r => [
-      r.date,
-      r.total_orders,
-      r.total_sales,
-      r.cash_sales,
-      r.mpesa_sales,
-      Math.round(r.total_sales / r.total_orders)
-    ])
-    const csv = [headers,...rows].map(row => row.join(',')).join('\n')
+    setCustomerSales(data || [])
+    setLoading(false)
+  }
 
+  const loadCashierReport = async () => {
+    setLoading(true)
+    const { data } = await supabase
+   .from('sales')
+   .select('cashier_id, paid_amount, created_at')
+   .gte('created_at', dateFrom + 'T00:00:00')
+   .lte('created_at', dateTo + 'T23:59:59')
+
+    // Group by cashier
+    const grouped = data?.reduce((acc: any, sale) => {
+      if (!acc[sale.cashier_id]) acc[sale.cashier_id] = { total: 0, count: 0 }
+      acc[sale.cashier_id].total += sale.paid_amount
+      acc[sale.cashier_id].count += 1
+      return acc
+    }, {}) || {}
+
+    setCashiers(Object.entries(grouped).map(([id, data]: any) => ({ id,...data })))
+    setLoading(false)
+  }
+
+  const exportToCSV = () => {
+    if (tab === 'daily') {
+      const csv = `Date From,Date To,Revenue,Costs,Profit,Total Sales\n${dateFrom},${dateTo},${revenue},${costs},${profit},${totalSales}`
+      downloadCSV(csv, `daily_report_${dateFrom}.csv`)
+    }
+    if (tab === 'customers' && selectedCustomer) {
+      const cust = customers.find(c => c.id === selectedCustomer)
+      const rows = customerSales.flatMap(s =>
+        s.sales_items.map((i: any) =>
+          `${new Date(s.created_at).toLocaleDateString()},${cust?.name},${i.item_description},${i.original_price},${i.paid_amount},${i.status}`
+        )
+      )
+      const csv = `Date,Customer,Item,Price,Paid,Status\n${rows.join('\n')}`
+      downloadCSV(csv, `ledger_${cust?.name}.csv`)
+    }
+  }
+
+  const downloadCSV = (csv: string, filename: string) => {
     const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
+    const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `COURAGE-KIDS-Report-${startDate}-to-${endDate}.csv`
-    document.body.appendChild(a)
+    a.download = filename
     a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
   }
 
-  if (loading) return <div className="p-6">Loading reports...</div>
-
   return (
-    <main className="p-6 bg-gray-100 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-          <h1 className="text-2xl font-bold">COURAGE KIDS SHOP - Reports</h1>
-
-          <div className="flex flex-wrap gap-2">
-            <input
-              type="date"
-              value={startDate}
-              onChange={e => setStartDate(e.target.value)}
-              className="border rounded px-3 py-2"
-            />
-            <input
-              type="date"
-              value={endDate}
-              onChange={e => setEndDate(e.target.value)}
-              className="border rounded px-3 py-2"
-            />
-            <button
-              onClick={exportCSV}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700"
-            >
-              <Download size={18} /> Export CSV
-            </button>
-          </div>
-        </div>
-
-        {/* KPI Cards */}
-        <div className="grid sm:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-xl shadow border-gray-200 p-6">
-            <div className="flex items-center gap-3 text-gray-500 text-sm mb-2">
-              <TrendingUp size={18} /> Total Revenue
-            </div>
-            <p className="text-3xl font-bold">Ksh {totalSales.toLocaleString()}</p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow border-gray-200 p-6">
-            <div className="flex items-center gap-3 text-gray-500 text-sm mb-2">
-              <Package size={18} /> Total Orders
-            </div>
-            <p className="text-3xl font-bold">{totalOrders}</p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow border-gray-200 p-6">
-            <div className="flex items-center gap-3 text-gray-500 text-sm mb-2">
-              <Truck size={18} /> Cash Sales
-            </div>
-            <p className="text-3xl font-bold">Ksh {totalCash.toLocaleString()}</p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow border-gray-200 p-6">
-            <div className="flex items-center gap-3 text-gray-500 text-sm mb-2">
-              <Calendar size={18} /> Avg Order
-            </div>
-            <p className="text-3xl font-bold">Ksh {avgOrder.toLocaleString(undefined, {maximumFractionDigits: 0})}</p>
-          </div>
-        </div>
-
-        {/* Daily Breakdown Table */}
-        <div className="bg-white rounded-xl shadow border-gray-200 overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="text-left p-4 text-sm font-semibold">Date</th>
-                <th className="text-right p-4 text-sm font-semibold">Orders</th>
-                <th className="text-right p-4 text-sm font-semibold">Total Ksh</th>
-                <th className="text-right p-4 text-sm font-semibold">Cash Ksh</th>
-                <th className="text-right p-4 text-sm font-semibold">M-Pesa Ksh</th>
-                <th className="text-right p-4 text-sm font-semibold">Avg Order</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dailyReports.length === 0? (
-                <tr><td colSpan={6} className="p-12 text-center text-gray-400">No sales in this period</td></tr>
-              ) : dailyReports.map(report => (
-                <tr key={report.date} className="border-b hover:bg-gray-50">
-                  <td className="p-4 font-medium">
-                    {new Date(report.date).toLocaleDateString('en-KE', {weekday: 'short', year: 'numeric', month: 'short', day: 'numeric'})}
-                  </td>
-                  <td className="p-4 text-right">{report.total_orders}</td>
-                  <td className="p-4 text-right font-bold">Ksh {report.total_sales.toLocaleString()}</td>
-                  <td className="p-4 text-right">Ksh {report.cash_sales.toLocaleString()}</td>
-                  <td className="p-4 text-right text-blue-600">Ksh {report.mpesa_sales.toLocaleString()}</td>
-                  <td className="p-4 text-right">Ksh {Math.round(report.total_sales / report.total_orders).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+    <div className="min-h-screen bg-gray-900 text-white p-4 pb-24">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-xl font-bold">Reports</h1>
+        <button onClick={exportToCSV} className="bg-green-600 px-4 py-2 rounded-lg text-sm font-bold">
+          Export CSV
+        </button>
       </div>
-    </main>
+
+      {/* Tabs */}
+      <div className="flex gap-2 mb-4 bg-gray-800 p-1 rounded-xl">
+        <button onClick={() => setTab('daily')} className={`flex-1 py-2 rounded-lg text-sm ${tab==='daily'?'bg-purple-600':'text-gray-400'}`}>Daily P&L</button>
+        <button onClick={() => setTab('customers')} className={`flex-1 py-2 rounded-lg text-sm ${tab==='customers'?'bg-purple-600':'text-gray-400'}`}>Customers</button>
+        <button onClick={() => setTab('cashiers')} className={`flex-1 py-2 rounded-lg text-sm ${tab==='cashiers'?'bg-purple-600':'text-gray-400'}`}>Cashiers</button>
+      </div>
+
+      {/* Date Filters */}
+      <div className="flex gap-2 mb-4">
+        <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} className="flex-1 bg-gray-800 p-2 rounded text-sm" />
+        <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} className="flex-1 bg-gray-800 p-2 rounded text-sm" />
+      </div>
+
+      {/* DAILY P&L TAB */}
+      {tab === 'daily' && (
+        <div>
+          {loading? <div className="text-center py-20 text-gray-500">Loading...</div> : (
+            <>
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                <div className="bg-gray-800 p-4 rounded-xl">
+                  <div className="text-gray-400 text-xs">REVENUE</div>
+                  <div className="text-2xl font-bold text-green-400">KES {revenue.toLocaleString()}</div>
+                </div>
+                <div className="bg-gray-800 p-4 rounded-xl">
+                  <div className="text-gray-400 text-xs">BALE COSTS</div>
+                  <div className="text-2xl font-bold text-red-400">KES {costs.toLocaleString()}</div>
+                </div>
+                <div className="bg-gray-800 p-4 rounded-xl col-span-2 border-2 border-purple-600">
+                  <div className="text-gray-400 text-xs">GROSS PROFIT</div>
+                  <div className={`text-3xl font-bold ${profit >= 0? 'text-green-400' : 'text-red-400'}`}>
+                    KES {profit.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    Margin: {revenue > 0? ((profit/revenue)*100).toFixed(1) : 0}%
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gray-800 p-4 rounded-xl">
+                <div className="flex justify-between text-sm">
+                  <span>Total Sales:</span>
+                  <span className="font-bold">{totalSales} transactions</span>
+                </div>
+                <div className="flex justify-between text-sm mt-2">
+                  <span>Avg Sale:</span>
+                  <span className="font-bold">KES {totalSales > 0? Math.round(revenue/totalSales).toLocaleString() : 0}</span>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* CUSTOMER LEDGER TAB */}
+      {tab === 'customers' && (
+        <div>
+          <select
+            value={selectedCustomer}
+            onChange={e=>setSelectedCustomer(e.target.value)}
+            className="w-full bg-gray-800 p-3 rounded mb-4"
+          >
+            <option value="">Select Customer</option>
+            {customers.map(c => (
+              <option key={c.id} value={c.id}>{c.name} - {c.phone}</option>
+            ))}
+          </select>
+
+          {selectedCustomer && (
+            <div className="bg-gray-800 rounded-xl overflow-hidden">
+              <div className="p-3 bg-gray-700 text-xs font-bold grid-cols-5 gap-2">
+                <div>DATE</div>
+                <div className="col-span-2">ITEM</div>
+                <div className="text-right">PRICE</div>
+                <div className="text-right">BAL</div>
+              </div>
+              {loading? <div className="p-8 text-center text-gray-500">Loading...</div> :
+                customerSales.flatMap(s =>
+                  s.sales_items.map((i: any, idx: number) => (
+                    <div key={idx} className="grid grid-cols-5 gap-2 p-3 border-b border-gray-700 text-sm">
+                      <div className="text-xs">{new Date(s.created_at).toLocaleDateString('en-KE')}</div>
+                      <div className="col-span-2 truncate">{i.item_description}</div>
+                      <div className="text-right">KES {i.original_price}</div>
+                      <div className={`text-right ${i.status==='Balance'?'text-orange-400':''}`}>
+                        {i.original_price - i.paid_amount}
+                      </div>
+                    </div>
+                  ))
+                )
+              }
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* CASHIER PERFORMANCE TAB */}
+      {tab === 'cashiers' && (
+        <div className="space-y-3">
+          {loading? <div className="text-center py-20 text-gray-500">Loading...</div> :
+            cashiers.map((c, idx) => (
+              <div key={idx} className="bg-gray-800 p-4 rounded-xl">
+                <div className="flex justify-between">
+                  <div>
+                    <div className="font-bold">Cashier {idx + 1}</div>
+                    <div className="text-xs text-gray-400">{c.count} sales</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-green-400">KES {c.total.toLocaleString()}</div>
+                    <div className="text-xs text-gray-400">Avg: KES {Math.round(c.total/c.count).toLocaleString()}</div>
+                  </div>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      )}
+
+      {/* Bottom Nav */}
+      <div className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 flex justify-around py-3">
+        <button onClick={() => router.push('/sales/new')} className="text-gray-400 text-sm">📦 POS</button>
+        <button onClick={() => router.push('/sales/my-sales')} className="text-gray-400 text-sm">📊 Sales</button>
+        <button onClick={() => router.push('/bales')} className="text-gray-400 text-sm">📦 Bales</button>
+        <button className="text-purple-400 font-bold text-sm">📈 Reports</button>
+      </div>
+    </div>
   )
 }

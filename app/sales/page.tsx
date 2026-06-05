@@ -1,174 +1,333 @@
 'use client'
-import { createClient } from '@/utils/supabase/client'
+import { useState, useEffect } from 'react'
+import { createClient } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
-import { LayoutDashboard, ShoppingCart, Package, Users, BarChart3, Settings, LogOut, Plus, Search } from 'lucide-react'
-import Link from 'next/link'
 
-export default function SalesPage() {
-  const supabase = createClient()
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
+type Session = {
+  id: string
+  opening_cash: number
+  closing_cash: number | null
+  opening_time: string
+  closing_time: string | null
+  status: string
+}
+
+export default function SessionPage() {
+  const [openingCash, setOpeningCash] = useState('2000')
+  const [openSession, setOpenSession] = useState<Session | null>(null)
+  const [sessionSales, setSessionSales] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [showCloseModal, setShowCloseModal] = useState(false)
+  const [actualCash, setActualCash] = useState('')
   const router = useRouter()
-  const [userId, setUserId] = useState('')
-  const [sales, setSales] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
 
-  useEffect(() => {
-    fetchSales()
-  }, [])
+  useEffect(() => { checkSession() }, [])
 
-  const fetchSales = async () => {
-    // FIXED: Added } and ) here
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      router.push('/pos')
+  const checkSession = async () => {
+    const user = await supabase.auth.getUser()
+    if (!user.data.user) {
+      router.push('/login')
       return
     }
-    
-    setUserId(user.id)
 
-    const { data, error } = await supabase
-      .from('sales')
-      .select('id, invoice_no, customer_phone, total_amount, discount, payment_method, status, created_at')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
+    const { data: session } = await supabase
+     .from('cash_sessions')
+     .select('*')
+     .eq('cashier_id', user.data.user.id)
+     .eq('status', 'open')
+     .single()
 
-    if (error) console.error(error)
-    setSales(data || [])
-    setLoading(false)
+    if (session) {
+      setOpenSession(session)
+      loadSessionSales(session.id)
+    }
   }
 
-  const filteredSales = sales.filter(s => 
-    s.invoice_no.toLowerCase().includes(search.toLowerCase()) ||
-    s.customer_phone?.toLowerCase().includes(search.toLowerCase())
-  )
+  const loadSessionSales = async (sessionId: string) => {
+    const { data } = await supabase
+     .from('sales')
+     .select('total_amount, paid_amount, balance, created_at')
+     .eq('session_id', sessionId)
+     .order('created_at', { ascending: false })
 
-  const menuItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
-    { icon: ShoppingCart, label: 'Sales', href: '/sales', active: true },
-    { icon: Package, label: 'Bales', href: '/bales' },
-    { icon: Users, label: 'Customers', href: '/customers' },
-    { icon: BarChart3, label: 'Reports', href: '/reports' },
-    { icon: Settings, label: 'Settings', href: '/settings' },
-  ]
+    setSessionSales(data || [])
+  }
 
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center">
-      <p className="text-gray-500">Loading sales...</p>
-    </div>
-  )
+  const startSession = async () => {
+    if (!openingCash || Number(openingCash) < 0) {
+      alert('Enter valid opening cash')
+      return
+    }
 
-  return (
-    <div className="flex min-h-screen bg-gray-50">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white shadow-lg hidden md:block">
-        <div className="p-6 border-b">
-          <h1 className="text-2xl font-bold text-blue-600">Watoto POS</h1>
-          <p className="text-xs text-gray-500 mt-1">Kids Clothing Store</p>
-        </div>
-        <nav className="p-4">
-          {menuItems.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-2 transition ${
-                item.active 
-                  ? 'bg-blue-50 text-blue-600 font-semibold' 
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <item.icon size={20} />
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-      </aside>
+    setLoading(true)
+    const user = await supabase.auth.getUser()
 
-      {/* Main */}
-      <div className="flex-1">
-        <header className="bg-white shadow-sm px-6 py-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold text-gray-800">Sales</h2>
-            <Link 
-              href="/sales/new"
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-            >
-              <Plus size={18} />
-              New Sale
-            </Link>
+    const { data, error } = await supabase
+     .from('cash_sessions')
+     .insert({
+        cashier_id: user.data.user?.id,
+        opening_cash: Number(openingCash)
+      })
+     .select()
+     .single()
+
+    if (error) {
+      alert('Error: ' + error.message)
+      setLoading(false)
+      return
+    }
+
+    setOpenSession(data)
+    setLoading(false)
+    router.push('/sales/new')
+  }
+
+  const openCloseModal = () => {
+    setActualCash('')
+    setShowCloseModal(true)
+  }
+
+  const closeSession = async () => {
+    const cashCounted = Number(actualCash)
+    if (cashCounted < 0) return alert('Enter valid cash amount')
+
+    setLoading(true)
+    const user = await supabase.auth.getUser()
+
+    const { error } = await supabase
+     .from('cash_sessions')
+     .update({
+        closing_cash: cashCounted,
+        closing_time: new Date().toISOString(),
+        status: 'closed'
+      })
+     .eq('id', openSession!.id)
+
+    if (error) {
+      alert('Error closing session: ' + error.message)
+      setLoading(false)
+      return
+    }
+
+    alert(`Session closed successfully!\n\n${getSessionSummary()}`)
+    setShowCloseModal(false)
+    setOpenSession(null)
+    setSessionSales([])
+    setLoading(false)
+    router.push('/sales')
+  }
+
+  // Calculate session totals
+  const totalSales = sessionSales.reduce((s, sale) => s + sale.paid_amount, 0)
+  const totalBalance = sessionSales.reduce((s, sale) => s + sale.balance, 0)
+  const expectedCash = openSession? Number(openSession.opening_cash) + totalSales : 0
+  const actualCashNum = Number(actualCash) || 0
+  const difference = actualCashNum - expectedCash
+
+  const getSessionSummary = () => {
+    return `Opening Cash: KES ${openSession?.opening_cash}
+Sales Made: KES ${totalSales.toLocaleString()}
+Expected Cash: KES ${expectedCash.toLocaleString()}
+Actual Cash: KES ${actualCashNum.toLocaleString()}
+Difference: KES ${difference.toLocaleString()} ${difference === 0? '✓' : difference > 0? '(Over)' : '(Short)'}
+Outstanding: KES ${totalBalance.toLocaleString()}`
+  }
+
+  if (!openSession) {
+    // Odoo-style Session Start screen
+    return (
+      <div className="h-screen bg-gray-900 text-white flex items-center justify-center p-6">
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold mb-2">Courage Bale Shop</h1>
+            <p className="text-gray-400">Mitumba Sales POS</p>
           </div>
-        </header>
 
-        <main className="p-6">
-          {/* Search */}
-          <div className="bg-white rounded-xl shadow p-4 mb-6">
-            <div className="flex items-center gap-2">
-              <Search size={20} className="text-gray-400" />
+          <div className="bg-gray-800 p-6 rounded-xl">
+            <div className="text-sm text-gray-400 mb-1">
+              Date: {new Date().toLocaleDateString('en-KE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </div>
+            <div className="text-sm text-gray-400 mb-4">Time: {new Date().toLocaleTimeString('en-KE')}</div>
+
+            <div className="mb-6">
+              <label className="text-sm text-gray-400 mb-2 block">Opening Cash</label>
               <input
-                type="text"
-                placeholder="Search by Invoice No or Customer Phone..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="flex-1 outline-none"
+                type="number"
+                value={openingCash}
+                onChange={e => setOpeningCash(e.target.value)}
+                className="w-full bg-gray-700 p-4 rounded text-2xl font-bold text-center focus:outline-none focus:ring-2 focus:ring-purple-600"
+                placeholder="2000"
+                autoFocus
               />
+              <p className="text-xs text-gray-500 mt-2">Cash in drawer at start of shift</p>
             </div>
+
+            <button
+              onClick={startSession}
+              disabled={loading}
+              className="w-full bg-purple-600 py-4 rounded-xl font-bold text-lg hover:bg-purple-700 disabled:opacity-50"
+            >
+              {loading? 'Starting...' : 'Start Bale Sale'}
+            </button>
           </div>
 
-          {/* Sales Table */}
-          <div className="bg-white rounded-xl shadow overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="text-left py-4 px-6 font-semibold">Invoice No</th>
-                    <th className="text-left py-4 px-6 font-semibold">Customer Phone</th>
-                    <th className="text-left py-4 px-6 font-semibold">Total</th>
-                    <th className="text-left py-4 px-6 font-semibold">Discount</th>
-                    <th className="text-left py-4 px-6 font-semibold">Payment</th>
-                    <th className="text-left py-4 px-6 font-semibold">Date</th>
-                    <th className="text-left py-4 px-6 font-semibold">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredSales.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="text-center py-12 text-gray-400">
-                        No sales found. <Link href="/sales/new" className="text-blue-600">Create your first sale</Link>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredSales.map((sale) => (
-                      <tr key={sale.id} className="border-b hover:bg-gray-50">
-                        <td className="py-4 px-6 font-medium">{sale.invoice_no}</td>
-                        <td className="py-4 px-6">{sale.customer_phone || '-'}</td>
-                        <td className="py-4 px-6 font-semibold">Ksh {Number(sale.total_amount).toLocaleString()}</td>
-                        <td className="py-4 px-6">Ksh {Number(sale.discount).toLocaleString()}</td>
-                        <td className="py-4 px-6 capitalize">{sale.payment_method}</td>
-                        <td className="py-4 px-6">{new Date(sale.created_at).toLocaleDateString()}</td>
-                        <td className="py-4 px-6">
-                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                            sale.status === 'completed' ? 'bg-green-100 text-green-700' : 
-                            sale.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                            'bg-red-100 text-red-700'
-                          }`}>
-                            {sale.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => router.push('/sales/my-sales')}
+              className="text-gray-400 text-sm"
+            >
+              View Sales Reports
+            </button>
           </div>
-
-          {/* Summary */}
-          <div className="mt-6 text-right text-gray-600">
-            Total Sales: <span className="font-bold text-gray-800">Ksh {filteredSales.reduce((sum, s) => sum + Number(s.total_amount), 0).toLocaleString()}</span>
-          </div>
-        </main>
+        </div>
       </div>
+    )
+  }
+
+  // Session is open - Show session dashboard
+  return (
+    <div className="min-h-screen bg-gray-900 text-white p-4 pb-24">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-xl font-bold">Active Session</h1>
+          <p className="text-xs text-gray-400">
+            Started: {new Date(openSession.opening_time).toLocaleTimeString('en-KE')}
+          </p>
+        </div>
+        <button
+          onClick={openCloseModal}
+          className="bg-red-600 px-4 py-2 rounded-lg text-sm font-bold"
+        >
+          Close Register
+        </button>
+      </div>
+
+      {/* Session Stats */}
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <div className="bg-gray-800 p-4 rounded-xl">
+          <div className="text-gray-400 text-xs">OPENING CASH</div>
+          <div className="text-2xl font-bold mt-1">KES {openSession.opening_cash.toLocaleString()}</div>
+        </div>
+        <div className="bg-gray-800 p-4 rounded-xl">
+          <div className="text-gray-400 text-xs">SALES MADE</div>
+          <div className="text-2xl font-bold mt-1 text-green-400">KES {totalSales.toLocaleString()}</div>
+        </div>
+        <div className="bg-gray-800 p-4 rounded-xl border-blue-500/30">
+          <div className="text-blue-400 text-xs">EXPECTED CASH</div>
+          <div className="text-2xl font-bold mt-1 text-blue-400">KES {expectedCash.toLocaleString()}</div>
+        </div>
+        <div className="bg-gray-800 p-4 rounded-xl border-orange-500/30">
+          <div className="text-orange-400 text-xs">OUTSTANDING</div>
+          <div className="text-2xl font-bold mt-1 text-orange-400">KES {totalBalance.toLocaleString()}</div>
+        </div>
+      </div>
+
+      {/* Recent Sales */}
+      <div className="bg-gray-800 rounded-xl p-4 mb-4">
+        <h3 className="font-bold mb-3">Recent Sales - {sessionSales.length} transactions</h3>
+        {sessionSales.length === 0? (
+          <p className="text-gray-500 text-center py-8">No sales yet. Start selling!</p>
+        ) : (
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {sessionSales.slice(0, 10).map((sale, idx) => (
+              <div key={idx} className="flex justify-between items-center py-2 border-b border-gray-700 last:border-0">
+                <div className="text-sm">
+                  <div>{new Date(sale.created_at).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' })}</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-bold">KES {sale.paid_amount.toLocaleString()}</div>
+                  {sale.balance > 0 && (
+                    <div className="text-xs text-orange-400">Balance: KES {sale.balance.toLocaleString()}</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          onClick={() => router.push('/sales/new')}
+          className="bg-purple-600 py-4 rounded-xl font-bold text-lg"
+        >
+          New Sale
+        </button>
+        <button
+          onClick={() => router.push('/sales/my-sales')}
+          className="bg-gray-700 py-4 rounded-xl font-bold text-lg"
+        >
+          My Sales
+        </button>
+      </div>
+
+      {/* Close Session Modal */}
+      {showCloseModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+          <div className="bg-gray-800 p-6 rounded-xl w-full max-w-sm">
+            <h3 className="font-bold mb-4 text-lg">Close Register</h3>
+
+            <div className="bg-gray-700 p-4 rounded-lg mb-4 text-sm">
+              <div className="flex justify-between mb-2">
+                <span>Opening Cash:</span>
+                <span>KES {openSession.opening_cash.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between mb-2">
+                <span>Sales Made:</span>
+                <span className="text-green-400">+ KES {totalSales.toLocaleString()}</span>
+              </div>
+              <hr className="border-gray-600 my-2" />
+              <div className="flex justify-between font-bold">
+                <span>Expected Cash:</span>
+                <span className="text-blue-400">KES {expectedCash.toLocaleString()}</span>
+              </div>
+            </div>
+
+            <label className="text-sm text-gray-400 mb-2 block">Count actual cash in drawer:</label>
+            <input
+              type="number"
+              value={actualCash}
+              onChange={e => setActualCash(e.target.value)}
+              className="w-full bg-gray-700 p-4 rounded text-2xl font-bold text-center mb-4 focus:outline-none focus:ring-2 focus:ring-red-600"
+              placeholder="0"
+              autoFocus
+            />
+
+            {actualCash && (
+              <div className={`p-3 rounded-lg mb-4 text-center font-bold ${
+                difference === 0? 'bg-green-900 text-green-300' :
+                difference > 0? 'bg-blue-900 text-blue-300' :
+                'bg-red-900 text-red-300'
+              }`}>
+                Difference: KES {Math.abs(difference).toLocaleString()} {difference === 0? '✓ Balanced' : difference > 0? '(Over)' : '(Short)'}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowCloseModal(false)}
+                className="flex-1 bg-gray-700 py-3 rounded font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={closeSession}
+                disabled={loading || !actualCash}
+                className="flex-1 bg-red-600 py-3 rounded font-bold disabled:opacity-50"
+              >
+                {loading? 'Closing...' : 'Confirm Close'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

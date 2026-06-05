@@ -74,6 +74,7 @@ export default function MySalesPage() {
           customers (id, name, phone),
           sales_items (id, item_description, bale_source, original_price, paid_amount, status)
         `)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
       if (error) throw error
