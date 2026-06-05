@@ -47,25 +47,19 @@ export default function PiecePOS() {
 
   const loadSession = async () => {
     const { data: { user }, error } = await supabase.auth.getUser()
-
     if (error ||!user) {
       router.push('/login')
       return
     }
 
-    const { data: session, error: sessionError } = await supabase
+    const { data: session } = await supabase
      .from('pos_sessions')
      .select('id')
      .eq('user_id', user.id)
      .eq('status', 'open')
      .maybeSingle()
 
-    if (!session || sessionError) {
-      alert('No open session. Start session first.')
-      router.push('/pos')
-      return
-    }
-    setSessionId(session.id)
+    setSessionId(session?.id || '')
   }
 
   const loadBales = async () => {
@@ -93,9 +87,21 @@ export default function PiecePOS() {
   const createCustomer = async () => {
     if (!newCustName.trim()) return alert('Enter customer name')
     setLoading(true)
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError ||!user) {
+      alert('Not logged in')
+      setLoading(false)
+      return
+    }
+
     const { data, error } = await supabase
      .from('customers')
-     .insert({ name: newCustName.trim(), phone: newCustPhone.trim() })
+     .insert({
+        user_id: user.id,
+        name: newCustName.trim(),
+        phone: newCustPhone.trim()
+      })
      .select()
      .single()
 
@@ -138,7 +144,7 @@ export default function PiecePOS() {
     if (field === 'bale_id') {
       const bale = bales.find(b => b.id === value)
       newItems[index].bale_source = bale?.bale_name || ''
-    } // <-- closing brace was missing here
+    }
 
     setItems(newItems)
   }
@@ -148,8 +154,8 @@ export default function PiecePOS() {
     setItems(items.filter((_, i) => i!== index))
   }
 
-  const totalAmount = items.reduce((s, i) => s + (Number(i.original_price) || 0), 0)
-  const basePaid = items.reduce((s, i) => s + (Number(i.paid_amount) || 0), 0)
+  const totalAmount = items.reduce((s: number, i: ItemRow) => s + (Number(i.original_price) || 0), 0)
+  const basePaid = items.reduce((s: number, i: ItemRow) => s + (Number(i.paid_amount) || 0), 0)
 
   const totalPaid = paymentMethod === 'Split'? cashAmount + otherAmount :
     paymentMethod === 'Balance'? totalAmount :
@@ -157,7 +163,6 @@ export default function PiecePOS() {
   const totalBalance = totalAmount - totalPaid
 
   const handlePay = async () => {
-    if (!sessionId) return alert('No active session. Open a session first')
     if (!selectedCustomer) return alert('Select customer first')
     if (items.some(i =>!i.item_description.trim())) return alert('Fill all item descriptions')
     if (totalAmount <= 0) return alert('Enter at least 1 item with price')
@@ -166,19 +171,20 @@ export default function PiecePOS() {
     setLoading(true)
 
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-
     if (authError ||!user) {
       alert('Not logged in')
       setLoading(false)
       return
     }
 
+   console.log('Session ID being sent:', sessionId, 'Type:', typeof sessionId)
+
     const { data: sale, error } = await supabase
      .from('sales')
      .insert({
-        user_id: user.id, // <-- using user_id not cashier_id
+        user_id: user.id,
         customer_id: selectedCustomer.id,
-        session_id: sessionId,
+        session_id: null,
         total_amount: totalAmount,
         paid_amount: totalPaid,
         balance: totalBalance,

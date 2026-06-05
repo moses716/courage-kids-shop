@@ -17,10 +17,17 @@ type Session = {
   status: string
 }
 
+type Sale = {
+  total_amount: number
+  paid_amount: number
+  balance: number
+  created_at: string
+}
+
 export default function SessionPage() {
   const [openingCash, setOpeningCash] = useState('2000')
   const [openSession, setOpenSession] = useState<Session | null>(null)
-  const [sessionSales, setSessionSales] = useState<any[]>([])
+  const [sessionSales, setSessionSales] = useState<Sale[]>([])
   const [loading, setLoading] = useState(false)
   const [showCloseModal, setShowCloseModal] = useState(false)
   const [actualCash, setActualCash] = useState('')
@@ -38,7 +45,7 @@ export default function SessionPage() {
     const { data: session } = await supabase
      .from('cash_sessions')
      .select('*')
-     .eq('cashier_id', user.data.user.id)
+     .eq('user_id', user.data.user.id)
      .eq('status', 'open')
      .single()
 
@@ -70,7 +77,7 @@ export default function SessionPage() {
     const { data, error } = await supabase
      .from('cash_sessions')
      .insert({
-        cashier_id: user.data.user?.id,
+        user_id: user.data.user?.id,
         opening_cash: Number(openingCash)
       })
      .select()
@@ -123,8 +130,8 @@ export default function SessionPage() {
   }
 
   // Calculate session totals
-  const totalSales = sessionSales.reduce((s, sale) => s + sale.paid_amount, 0)
-  const totalBalance = sessionSales.reduce((s, sale) => s + sale.balance, 0)
+  const totalSales = sessionSales.reduce((s: number, sale: Sale) => s + sale.paid_amount, 0)
+  const totalBalance = sessionSales.reduce((s: number, sale: Sale) => s + sale.balance, 0)
   const expectedCash = openSession? Number(openSession.opening_cash) + totalSales : 0
   const actualCashNum = Number(actualCash) || 0
   const difference = actualCashNum - expectedCash

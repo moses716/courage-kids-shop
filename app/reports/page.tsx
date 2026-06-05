@@ -8,6 +8,26 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+type Sale = {
+  paid_amount: number
+  total_amount: number
+  created_at: string
+  user_id: string
+}
+
+type SaleItem = {
+  item_description: string
+  original_price: number
+  paid_amount: number
+  status: string
+}
+
+type CustomerSale = {
+  created_at: string
+  customer_id: string
+  sales_items: SaleItem[]
+}
+
 export default function ReportsPage() {
   const [tab, setTab] = useState('daily')
   const [dateFrom, setDateFrom] = useState(new Date().toISOString().split('T')[0])
@@ -23,7 +43,7 @@ export default function ReportsPage() {
   // Customer Ledger
   const [customers, setCustomers] = useState<any[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<string>('')
-  const [customerSales, setCustomerSales] = useState<any[]>([])
+  const [customerSales, setCustomerSales] = useState<CustomerSale[]>([])
 
   // Cashier Performance
   const [cashiers, setCashiers] = useState<any[]>([])
@@ -45,30 +65,30 @@ export default function ReportsPage() {
 
     // 1. Revenue from sales
     const { data: sales } = await supabase
-   .from('sales')
-   .select('paid_amount, total_amount')
-   .gte('created_at', dateFrom + 'T00:00:00')
-   .lte('created_at', dateTo + 'T23:59:59')
+    .from('sales')
+    .select('paid_amount, total_amount')
+    .gte('created_at', dateFrom + 'T00:00:00')
+    .lte('created_at', dateTo + 'T23:59:59')
 
-    const rev = sales?.reduce((s, i) => s + i.paid_amount, 0) || 0
+    const rev = sales?.reduce((s: number, i: { paid_amount: number }) => s + (i.paid_amount || 0), 0) || 0
     setRevenue(rev)
     setTotalSales(sales?.length || 0)
 
     // 2. Bale costs for items sold in date range
     const { data: items } = await supabase
-   .from('sales_items')
-   .select('bale_id, sales!inner(created_at)')
-   .gte('sales.created_at', dateFrom + 'T00:00:00')
-   .lte('sales.created_at', dateTo + 'T23:59:59')
-   .not('bale_id', 'is', null)
+    .from('sales_items')
+    .select('bale_id, sales!inner(created_at)')
+    .gte('sales.created_at', dateFrom + 'T00:00:00')
+    .lte('sales.created_at', dateTo + 'T23:59:59')
+    .not('bale_id', 'is', null)
 
     const baleIds = [...new Set(items?.map(i => i.bale_id))]
     if (baleIds.length > 0) {
       const { data: bales } = await supabase
-     .from('bales')
-     .select('cost_price')
-     .in('id', baleIds)
-      const cost = bales?.reduce((s, b) => s + b.cost_price, 0) || 0
+    .from('bales')
+    .select('cost_price')
+    .in('id', baleIds)
+      const cost = bales?.reduce((s: number, b: { cost_price: number }) => s + b.cost_price, 0) || 0
       setCosts(cost)
       setProfit(rev - cost)
     } else {
@@ -81,23 +101,23 @@ export default function ReportsPage() {
 
   const loadCustomers = async () => {
     const { data } = await supabase
-   .from('customers')
-   .select('*')
-   .order('name')
+    .from('customers')
+    .select('*')
+    .order('name')
     setCustomers(data || [])
   }
 
   const loadCustomerLedger = async () => {
     setLoading(true)
     const { data } = await supabase
-   .from('sales')
-   .select(`
-      *,
-      sales_items(item_description, original_price, paid_amount, status)
-    `)
-   .eq('customer_id', selectedCustomer)
-   .order('created_at', { ascending: false })
-   .limit(50)
+    .from('sales')
+    .select(`
+        *,
+        sales_items(item_description, original_price, paid_amount, status)
+      `)
+    .eq('customer_id', selectedCustomer)
+    .order('created_at', { ascending: false })
+    .limit(50)
 
     setCustomerSales(data || [])
     setLoading(false)
@@ -106,20 +126,20 @@ export default function ReportsPage() {
   const loadCashierReport = async () => {
     setLoading(true)
     const { data } = await supabase
-   .from('sales')
-   .select('cashier_id, paid_amount, created_at')
-   .gte('created_at', dateFrom + 'T00:00:00')
-   .lte('created_at', dateTo + 'T23:59:59')
+    .from('sales')
+    .select('user_id, paid_amount, created_at')
+    .gte('created_at', dateFrom + 'T00:00:00')
+    .lte('created_at', dateTo + 'T23:59:59')
 
-    // Group by cashier
-    const grouped = data?.reduce((acc: any, sale) => {
-      if (!acc[sale.cashier_id]) acc[sale.cashier_id] = { total: 0, count: 0 }
-      acc[sale.cashier_id].total += sale.paid_amount
-      acc[sale.cashier_id].count += 1
+    // Group by user/cashier
+    const grouped = data?.reduce((acc: Record<string, { total: number; count: number }>, sale: Sale) => {
+      if (!acc[sale.user_id]) acc[sale.user_id] = { total: 0, count: 0 }
+      acc[sale.user_id].total += sale.paid_amount
+      acc[sale.user_id].count += 1
       return acc
     }, {}) || {}
 
-    setCashiers(Object.entries(grouped).map(([id, data]: any) => ({ id,...data })))
+    setCashiers(Object.entries(grouped).map(([id, data]) => ({ id,...data })))
     setLoading(false)
   }
 
@@ -131,7 +151,7 @@ export default function ReportsPage() {
     if (tab === 'customers' && selectedCustomer) {
       const cust = customers.find(c => c.id === selectedCustomer)
       const rows = customerSales.flatMap(s =>
-        s.sales_items.map((i: any) =>
+        s.sales_items.map((i: SaleItem) =>
           `${new Date(s.created_at).toLocaleDateString()},${cust?.name},${i.item_description},${i.original_price},${i.paid_amount},${i.status}`
         )
       )
@@ -236,7 +256,7 @@ export default function ReportsPage() {
               </div>
               {loading? <div className="p-8 text-center text-gray-500">Loading...</div> :
                 customerSales.flatMap(s =>
-                  s.sales_items.map((i: any, idx: number) => (
+                  s.sales_items.map((i: SaleItem, idx: number) => (
                     <div key={idx} className="grid grid-cols-5 gap-2 p-3 border-b border-gray-700 text-sm">
                       <div className="text-xs">{new Date(s.created_at).toLocaleDateString('en-KE')}</div>
                       <div className="col-span-2 truncate">{i.item_description}</div>
