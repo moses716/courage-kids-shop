@@ -8,11 +8,14 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-type Sale = {
+type SaleData = {
   paid_amount: number
-  total_amount: number
   created_at: string
   user_id: string
+}
+
+type BaleData = {
+  cost_price: number
 }
 
 type SaleItem = {
@@ -46,7 +49,7 @@ export default function ReportsPage() {
   const [customerSales, setCustomerSales] = useState<CustomerSale[]>([])
 
   // Cashier Performance
-  const [cashiers, setCashiers] = useState<any[]>([])
+  const [cashiers, setCashiers] = useState<{id: string; total: number; count: number}[]>([])
 
   const router = useRouter()
 
@@ -65,30 +68,33 @@ export default function ReportsPage() {
 
     // 1. Revenue from sales
     const { data: sales } = await supabase
-    .from('sales')
-    .select('paid_amount, total_amount')
-    .gte('created_at', dateFrom + 'T00:00:00')
-    .lte('created_at', dateTo + 'T23:59:59')
+     .from('sales')
+     .select('paid_amount, total_amount')
+     .gte('created_at', dateFrom + 'T00:00:00')
+     .lte('created_at', dateTo + 'T23:59:59')
 
-    const rev = sales?.reduce((s: number, i: { paid_amount: number }) => s + (i.paid_amount || 0), 0) || 0
+    const salesTyped = sales as SaleData[] | null
+    const rev = salesTyped?.reduce((s: number, i) => s + (i.paid_amount || 0), 0) || 0
     setRevenue(rev)
-    setTotalSales(sales?.length || 0)
+    setTotalSales(salesTyped?.length || 0)
 
     // 2. Bale costs for items sold in date range
     const { data: items } = await supabase
-    .from('sales_items')
-    .select('bale_id, sales!inner(created_at)')
-    .gte('sales.created_at', dateFrom + 'T00:00:00')
-    .lte('sales.created_at', dateTo + 'T23:59:59')
-    .not('bale_id', 'is', null)
+     .from('sales_items')
+     .select('bale_id, sales!inner(created_at)')
+     .gte('sales.created_at', dateFrom + 'T00:00:00')
+     .lte('sales.created_at', dateTo + 'T23:59:59')
+     .not('bale_id', 'is', null)
 
-    const baleIds = [...new Set(items?.map(i => i.bale_id))]
+    const baleIds = [...new Set(items?.map(i => i.bale_id).filter(Boolean))]
     if (baleIds.length > 0) {
       const { data: bales } = await supabase
-    .from('bales')
-    .select('cost_price')
-    .in('id', baleIds)
-      const cost = bales?.reduce((s: number, b: { cost_price: number }) => s + b.cost_price, 0) || 0
+       .from('bales')
+       .select('cost_price')
+       .in('id', baleIds)
+
+      const balesTyped = bales as BaleData[] | null
+      const cost = balesTyped?.reduce((s: number, b) => s + (b.cost_price || 0), 0) || 0
       setCosts(cost)
       setProfit(rev - cost)
     } else {
@@ -101,40 +107,42 @@ export default function ReportsPage() {
 
   const loadCustomers = async () => {
     const { data } = await supabase
-    .from('customers')
-    .select('*')
-    .order('name')
+     .from('customers')
+     .select('*')
+     .order('name')
     setCustomers(data || [])
   }
 
   const loadCustomerLedger = async () => {
     setLoading(true)
     const { data } = await supabase
-    .from('sales')
-    .select(`
+     .from('sales')
+     .select(`
         *,
         sales_items(item_description, original_price, paid_amount, status)
       `)
-    .eq('customer_id', selectedCustomer)
-    .order('created_at', { ascending: false })
-    .limit(50)
+     .eq('customer_id', selectedCustomer)
+     .order('created_at', { ascending: false })
+     .limit(50)
 
-    setCustomerSales(data || [])
+    setCustomerSales((data as CustomerSale[]) || [])
     setLoading(false)
   }
 
   const loadCashierReport = async () => {
     setLoading(true)
     const { data } = await supabase
-    .from('sales')
-    .select('user_id, paid_amount, created_at')
-    .gte('created_at', dateFrom + 'T00:00:00')
-    .lte('created_at', dateTo + 'T23:59:59')
+     .from('sales')
+     .select('user_id, paid_amount, created_at')
+     .gte('created_at', dateFrom + 'T00:00:00')
+     .lte('created_at', dateTo + 'T23:59:59')
+
+    const dataTyped = data as { user_id: string; paid_amount: number; created_at: string }[] | null
 
     // Group by user/cashier
-    const grouped = data?.reduce((acc: Record<string, { total: number; count: number }>, sale: Sale) => {
+    const grouped = dataTyped?.reduce((acc: Record<string, { total: number; count: number }>, sale) => {
       if (!acc[sale.user_id]) acc[sale.user_id] = { total: 0, count: 0 }
-      acc[sale.user_id].total += sale.paid_amount
+      acc[sale.user_id].total += sale.paid_amount || 0
       acc[sale.user_id].count += 1
       return acc
     }, {}) || {}
