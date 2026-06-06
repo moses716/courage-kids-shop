@@ -5,12 +5,11 @@ import { useState } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
 
-const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
 export default function NewBalePage() {
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -36,14 +35,13 @@ export default function NewBalePage() {
     setSuccess('')
 
     try {
-      // This will now work because we use createBrowserClient
       const { data: { user }, error: authError } = await supabase.auth.getUser()
       if (authError) throw authError
       if (!user) throw new Error('You must be logged in')
 
       const { error: insertError } = await supabase
-       .from('bales')
-       .insert({
+      .from('bales')
+      .insert({
           user_id: user.id,
           bale_name: form.bale_name,
           bale_type: form.bale_type,
@@ -65,7 +63,7 @@ export default function NewBalePage() {
         total_items_estimated: '',
         date_received: new Date().toISOString().split('T')[0]
       })
-      
+
       setTimeout(() => router.push('/bales'), 1500)
     } catch (err: any) {
       setError(err.message || 'Failed to save bale')
@@ -77,7 +75,7 @@ export default function NewBalePage() {
   return (
     <div className="max-w-2xl mx-auto p-6">
       <h1 className="text-2xl font-bold mb-6">Add New Bale</h1>
-      
+
       {error && <div className="bg-red-100 text-red-700 p-3 rounded mb-4">{error}</div>}
       {success && <div className="bg-green-100 text-green-700 p-3 rounded mb-4">{success}</div>}
 
