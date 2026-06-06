@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "COURAGE KIDS SHOP - Kids Clothing",
+  title: "COURAGE KIDS SHOP - Kids Clothing POS",
   description: "Quality kids clothing for every season. Comfortable, durable, and stylish.",
 };
 
@@ -24,9 +24,20 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {children}
+      <body 
+        className={`
+          ${geistSans.variable} 
+          ${geistMono.variable} 
+          antialiased 
+          bg-gray-50 
+          overflow-x-hidden 
+          text-gray-900
+        `}
+      >
+        <div className="min-h-screen w-full max-w-full">
+          {children}
+        </div>
       </body>
     </html>
-  );
+  )
 }
