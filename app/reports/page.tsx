@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
+import { Download, Calendar, TrendingUp, DollarSign, Users, UserCheck } from 'lucide-react'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -76,7 +77,7 @@ export default function ReportsPage() {
   }
 
   const loadCustomers = async () => {
-    const { data } = await supabase.from('customers').select('*').order('name')
+    const { data } = await supabase.from('customers').select('*').eq('is_active', true).order('name')
     setCustomers(data || [])
   }
 
@@ -114,18 +115,18 @@ export default function ReportsPage() {
 
   const exportToCSV = () => {
     if (tab === 'daily') {
-      const csv = `Date From,Date To,Revenue,Costs,Profit,Total Sales\n${dateFrom},${dateTo},${revenue},${costs},${profit},${totalSales}`
-      downloadCSV(csv, `daily_report_${dateFrom}.csv`)
+      const csv = `Date From,Date To,Revenue,Costs,Profit,Total Sales,Margin%\n${dateFrom},${dateTo},${revenue},${costs},${profit},${totalSales},${margin}`
+      downloadCSV(csv, `daily_report_${dateFrom}_to_${dateTo}.csv`)
     }
     if (tab === 'customers' && selectedCustomer) {
       const cust = customers.find(c => c.id === selectedCustomer)
       const rows = customerSales.flatMap(s =>
         s.sales_items.map((i: SaleItem) =>
-          `${new Date(s.created_at).toLocaleDateString()},${cust?.name},${i.item_description},${i.original_price},${i.paid_amount},${i.status}`
+          `${new Date(s.created_at).toLocaleDateString()},${cust?.name},${i.item_description},${i.original_price},${i.paid_amount},${i.original_price - i.paid_amount},${i.status}`
         )
       )
-      const csv = `Date,Customer,Item,Price,Paid,Status\n${rows.join('\n')}`
-      downloadCSV(csv, `ledger_${cust?.name}.csv`)
+      const csv = `Date,Customer,Item,Price,Paid,Balance,Status\n${rows.join('\n')}`
+      downloadCSV(csv, `ledger_${cust?.name}_${dateFrom}.csv`)
     }
   }
 
@@ -139,6 +140,7 @@ export default function ReportsPage() {
   }
 
   const margin = revenue > 0? ((profit/revenue)*100).toFixed(1) : '0'
+  const avgSale = totalSales > 0? Math.round(revenue/totalSales) : 0
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -147,62 +149,91 @@ export default function ReportsPage() {
         {/* FIXED: Responsive header - stack on mobile, row on desktop */}
         <div className="mb-6">
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-5">
-            <h1 className="text-2xl font-bold">Reports</h1>
+            <div className="flex items-center gap-3">
+              <TrendingUp size={28} className="text-purple-400" />
+              <h1 className="text-2xl font-bold">Reports</h1>
+            </div>
             <button
               onClick={exportToCSV}
-              className="bg-green-600 px-5 py-3 rounded-xl text-sm font-semibold w-full sm:w-auto"
+              className="bg-green-600 hover:bg-green-700 px-5 py-3 rounded-xl text-sm font-semibold w-full sm:w-auto flex items-center justify-center gap-2"
             >
+              <Download size={18} />
               Export CSV
             </button>
           </div>
 
-          {/* Tabs */}
+          {/* FIXED: Tabs with proper spacing */}
           <div className="flex gap-2 bg-gray-800 p-1.5 rounded-xl">
-            <button onClick={() => setTab('daily')} className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${tab==='daily'?'bg-purple-600':'text-gray-400'}`}>Daily P&L</button>
-            <button onClick={() => setTab('customers')} className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${tab==='customers'?'bg-purple-600':'text-gray-400'}`}>Customers</button>
-            <button onClick={() => setTab('cashiers')} className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${tab==='cashiers'?'bg-purple-600':'text-gray-400'}`}>Cashiers</button>
+            <button onClick={() => setTab('daily')} className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition ${tab==='daily'?'bg-purple-600 text-white':'text-gray-400 hover:text-white'}`}>Daily P&L</button>
+            <button onClick={() => setTab('customers')} className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition ${tab==='customers'?'bg-purple-600 text-white':'text-gray-400 hover:text-white'}`}>Customers</button>
+            <button onClick={() => setTab('cashiers')} className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition ${tab==='cashiers'?'bg-purple-600 text-white':'text-gray-400 hover:text-white'}`}>Cashiers</button>
           </div>
         </div>
 
-        {/* Date inputs */}
-        <div className="grid grid-cols-2 gap-3 mb-5">
-          <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
-            className="bg-gray-800 p-3 pr-10 rounded-xl text-sm text-white" />
-          <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
-            className="bg-gray-800 p-3 pr-10 rounded-xl text-sm text-white" />
+        {/* FIXED: Date inputs with icons */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+          <div className="relative">
+            <Calendar size={18} className="absolute left-3 top-3.5 text-gray-400" />
+            <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
+              className="w-full bg-gray-800 pl-10 pr-4 py-3.5 rounded-xl text-sm text-white border-gray-700 focus:ring-2 focus:ring-purple-500 outline-none" />
+          </div>
+          <div className="relative">
+            <Calendar size={18} className="absolute left-3 top-3.5 text-gray-400" />
+            <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
+              className="w-full bg-gray-800 pl-10 pr-4 py-3.5 rounded-xl text-sm text-white border-gray-700 focus:ring-2 focus:ring-purple-500 outline-none" />
+          </div>
         </div>
 
         {/* DAILY P&L TAB */}
         {tab === 'daily' && (
           <div>
-            {loading? <div className="text-center py-20 text-gray-400">Loading...</div> : (
+            {loading? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mb-4"></div>
+                <p className="text-gray-400">Loading report...</p>
+              </div>
+            ) : (
               <>
+                {/* FIXED: 2+1 card grid with icons */}
                 <div className="grid grid-cols-2 gap-4 mb-5">
-                  <div className="bg-gray-800 p-5 rounded-xl">
-                    <div className="text-gray-400 text-xs mb-1">REVENUE</div>
-                    <div className="text-2xl font-bold text-green-400">KES {revenue.toLocaleString()}</div>
-                  </div>
-                  <div className="bg-gray-800 p-5 rounded-xl">
-                    <div className="text-gray-400 text-xs mb-1">BALE COSTS</div>
-                    <div className="text-2xl font-bold text-red-400">KES {costs.toLocaleString()}</div>
-                  </div>
-                  <div className="bg-gray-800 p-5 rounded-xl col-span-2 border-2 border-purple-600">
-                    <div className="text-gray-400 text-xs mb-1">GROSS PROFIT</div>
-                    <div className={`text-3xl font-bold leading-tight ${profit >= 0? 'text-green-400' : 'text-red-400'}`}>
-                      KES {profit.toLocaleString()}
+                  <div className="bg-gray-800 p-5 rounded-xl border-gray-700">
+                    <div className="flex items-center gap-2 mb-2">
+                      <DollarSign size={16} className="text-green-400" />
+                      <p className="text-gray-400 text-xs">REVENUE</p>
                     </div>
-                    <div className="text-sm text-gray-400 mt-2">Margin: {margin}%</div>
+                    <p className="text-2xl font-bold text-green-400">KES {revenue.toLocaleString()}</p>
+                  </div>
+                  <div className="bg-gray-800 p-5 rounded-xl border-gray-700">
+                    <div className="flex items-center gap-2 mb-2">
+                      <DollarSign size={16} className="text-red-400" />
+                      <p className="text-gray-400 text-xs">BALE COSTS</p>
+                    </div>
+                    <p className="text-2xl font-bold text-red-400">KES {costs.toLocaleString()}</p>
+                  </div>
+
+                  {/* FIXED: Full width profit card */}
+                  <div className="bg-linear-to-r from-gray-800 to-gray-700 p-6 rounded-xl col-span-2 border-2 border-purple-600">
+                    <div className="flex items-center gap-2 mb-2">
+                      <TrendingUp size={18} className="text-purple-400" />
+                      <p className="text-gray-300 text-sm">GROSS PROFIT</p>
+                    </div>
+                    <p className={`text-4xl font-bold leading-tight ${profit >= 0? 'text-green-400' : 'text-red-400'}`}>
+                      KES {profit.toLocaleString()}
+                    </p>
+                    <p className="text-sm text-gray-400 mt-2">Margin: {margin}%</p>
                   </div>
                 </div>
 
-                <div className="bg-gray-800 p-5 rounded-xl space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">Total Sales:</span>
-                    <span className="font-semibold">{totalSales} transactions</span>
+                {/* Stats card */}
+                <div className="bg-gray-800 p-5 rounded-xl border-gray-700 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400 text-sm">Total Sales</span>
+                    <span className="font-semibold text-lg">{totalSales} transactions</span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">Avg Sale:</span>
-                    <span className="font-semibold">KES {totalSales > 0? Math.round(revenue/totalSales).toLocaleString() : 0}</span>
+                  <div className="h-px bg-gray-700"></div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400 text-sm">Average Sale</span>
+                    <span className="font-semibold text-lg">KES {avgSale.toLocaleString()}</span>
                   </div>
                 </div>
               </>
@@ -213,36 +244,45 @@ export default function ReportsPage() {
         {/* CUSTOMER LEDGER TAB */}
         {tab === 'customers' && (
           <div>
-            <select value={selectedCustomer} onChange={e=>setSelectedCustomer(e.target.value)}
-              className="w-full bg-gray-800 p-4 rounded-xl mb-5 text-white">
-              <option value="">Select Customer</option>
-              {customers.map(c => (
-                <option key={c.id} value={c.id}>{c.name} - {c.phone}</option>
-              ))}
-            </select>
+            <div className="mb-5">
+              <label className="text-sm text-gray-400 mb-2 flex items-center gap-2">
+                <Users size={16} /> Select Customer
+              </label>
+              <select value={selectedCustomer} onChange={e=>setSelectedCustomer(e.target.value)}
+                className="w-full bg-gray-800 p-4 rounded-xl text-white border-gray-700 focus:ring-2 focus:ring-purple-500 outline-none">
+                <option value="">Choose customer...</option>
+                {customers.map(c => (
+                  <option key={c.id} value={c.id}>{c.name} - {c.phone}</option>
+                ))}
+              </select>
+            </div>
 
             {selectedCustomer && (
-              <div className="bg-gray-800 rounded-xl overflow-hidden">
-                <div className="p-4 bg-gray-700 text-xs font-semibold grid-cols-5 gap-3">
+              <div className="bg-gray-800 rounded-xl overflow-hidden border-gray-700">
+                <div className="p-4 bg-gray-700 grid grid-cols-5 gap-3 text-xs font-semibold text-gray-300">
                   <div>DATE</div>
                   <div className="col-span-2">ITEM</div>
                   <div className="text-right">PRICE</div>
-                  <div className="text-right">BAL</div>
+                  <div className="text-right">BALANCE</div>
                 </div>
-                {loading? <div className="p-8 text-center text-gray-400">Loading...</div> :
+                {loading? (
+                  <div className="p-8 text-center text-gray-400">Loading ledger...</div>
+                ) : customerSales.length === 0? (
+                  <div className="p-8 text-center text-gray-500">No transactions found</div>
+                ) : (
                   customerSales.flatMap(s =>
                     s.sales_items.map((i: SaleItem, idx: number) => (
-                      <div key={idx} className="grid grid-cols-5 gap-3 p-4 border-b border-gray-700 text-sm">
+                      <div key={idx} className="grid grid-cols-5 gap-3 p-4 border-b border-gray-700 text-sm last:border-0">
                         <div className="text-xs text-gray-400">{new Date(s.created_at).toLocaleDateString('en-KE')}</div>
                         <div className="col-span-2 truncate">{i.item_description}</div>
                         <div className="text-right">KES {i.original_price.toLocaleString()}</div>
-                        <div className={`text-right font-medium ${i.original_price - i.paid_amount > 0? 'text-orange-400' : ''}`}>
+                        <div className={`text-right font-medium ${i.original_price - i.paid_amount > 0? 'text-orange-400' : 'text-green-400'}`}>
                           KES {(i.original_price - i.paid_amount).toLocaleString()}
                         </div>
                       </div>
                     ))
                   )
-                }
+                )}
               </div>
             )}
           </div>
@@ -251,36 +291,46 @@ export default function ReportsPage() {
         {/* CASHIER PERFORMANCE TAB */}
         {tab === 'cashiers' && (
           <div className="space-y-4">
-            {loading? <div className="text-center py-20 text-gray-400">Loading...</div> :
+            {loading? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mb-4"></div>
+                <p className="text-gray-400">Loading cashier data...</p>
+              </div>
+            ) : cashiers.length === 0? (
+              <div className="text-center py-20 text-gray-500">No sales data for this period</div>
+            ) : (
               cashiers.map((c, idx) => (
-                <div key={idx} className="bg-gray-800 p-5 rounded-xl">
+                <div key={idx} className="bg-gray-800 p-5 rounded-xl border-gray-700">
                   <div className="flex justify-between items-center">
-                    <div>
-                      <div className="font-semibold text-lg mb-1">Cashier {idx + 1}</div>
-                      <div className="text-xs text-gray-400">{c.count} sales</div>
+                    <div className="flex items-center gap-3">
+                      <UserCheck size={20} className="text-purple-400" />
+                      <div>
+                        <p className="font-semibold text-lg">Cashier {idx + 1}</p>
+                        <p className="text-xs text-gray-400">{c.count} sales</p>
+                      </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-2xl font-bold text-green-400">KES {c.total.toLocaleString()}</div>
-                      <div className="text-xs text-gray-400 mt-1">Avg: KES {Math.round(c.total/c.count).toLocaleString()}</div>
+                      <p className="text-2xl font-bold text-green-400">KES {c.total.toLocaleString()}</p>
+                      <p className="text-xs text-gray-400 mt-1">Avg: KES {Math.round(c.total/c.count).toLocaleString()}</p>
                     </div>
                   </div>
                 </div>
               ))
-            }
+            )}
           </div>
         )}
       </div>
 
-      {/* Bottom nav */}
+      {/* FIXED: Bottom nav with spacing */}
       <div className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700">
         <div className="flex justify-around py-3.5">
-          <button onClick={() => router.push('/sales/new')} className="flex flex-col items-center text-gray-400 text-xs gap-1">
+          <button onClick={() => router.push('/sales/new')} className="flex flex-col items-center text-gray-400 text-xs gap-1 hover:text-white">
             <span className="text-xl">📦</span> POS
           </button>
-          <button onClick={() => router.push('/sales/my-sales')} className="flex flex-col items-center text-gray-400 text-xs gap-1">
+          <button onClick={() => router.push('/sales/my-sales')} className="flex flex-col items-center text-gray-400 text-xs gap-1 hover:text-white">
             <span className="text-xl">📊</span> Sales
           </button>
-          <button onClick={() => router.push('/bales')} className="flex flex-col items-center text-gray-400 text-xs gap-1">
+          <button onClick={() => router.push('/bales')} className="flex flex-col items-center text-gray-400 text-xs gap-1 hover:text-white">
             <span className="text-xl">📦</span> Bales
           </button>
           <button className="flex flex-col items-center text-purple-400 font-semibold text-xs gap-1">
