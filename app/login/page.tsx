@@ -30,16 +30,16 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="bg-white p-8 rounded-lg shadow-md w-96">
-        <h1 className="text-2xl font-bold mb-6 text-center">Watoto POS Login</h1>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 overflow-x-hidden">
+      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-sm mx-4">
+        <h1 className="text-2xl font-bold mb-6 text-center text-gray-900">Courage Kids POS Login</h1>
         <form onSubmit={handleLogin} className="space-y-4">
           <input
             type="email"
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full border p-2 rounded"
+            className="w-full border-gray-300 p-3 rounded text-base min-h-12 text-gray-900 bg-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             required
           />
           <input
@@ -47,13 +47,13 @@ export default function LoginPage() {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full border p-2 rounded"
+            className="w-full border-gray-300 p-3 rounded text-base min-h-12 text-gray-900 bg-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             required
           />
           <button 
             type="submit" 
             disabled={loading}
-            className="w-full bg-blue-600 text-white p-2 rounded"
+            className="w-full bg-blue-600 text-white p-3 rounded text-base min-h-12 font-medium hover:bg-blue-700 disabled:opacity-50"
           >
             {loading ? 'Logging in...' : 'Login'}
           </button>
