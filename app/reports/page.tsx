@@ -8,28 +8,10 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-type SaleData = {
-  paid_amount: number
-  created_at: string
-  user_id: string
-}
-
-type BaleData = {
-  cost_price: number
-}
-
-type SaleItem = {
-  item_description: string
-  original_price: number
-  paid_amount: number
-  status: string
-}
-
-type CustomerSale = {
-  created_at: string
-  customer_id: string
-  sales_items: SaleItem[]
-}
+type SaleData = { paid_amount: number; created_at: string; user_id: string }
+type BaleData = { cost_price: number }
+type SaleItem = { item_description: string; original_price: number; paid_amount: number; status: string }
+type CustomerSale = { created_at: string; customer_id: string; sales_items: SaleItem[] }
 
 export default function ReportsPage() {
   const [tab, setTab] = useState('daily')
@@ -47,7 +29,6 @@ export default function ReportsPage() {
   const [customerSales, setCustomerSales] = useState<CustomerSale[]>([])
 
   const [cashiers, setCashiers] = useState<{id: string; total: number; count: number}[]>([])
-
   const router = useRouter()
 
   useEffect(() => {
@@ -63,10 +44,10 @@ export default function ReportsPage() {
   const loadDailyReport = async () => {
     setLoading(true)
     const { data: sales } = await supabase
-    .from('sales')
-    .select('paid_amount, total_amount')
-    .gte('created_at', dateFrom + 'T00:00:00')
-    .lte('created_at', dateTo + 'T23:59:59')
+     .from('sales')
+     .select('paid_amount, total_amount')
+     .gte('created_at', dateFrom + 'T00:00:00')
+     .lte('created_at', dateTo + 'T23:59:59')
 
     const salesTyped = sales as SaleData[] | null
     const rev = salesTyped?.reduce((s: number, i) => s + (i.paid_amount || 0), 0) || 0
@@ -74,19 +55,15 @@ export default function ReportsPage() {
     setTotalSales(salesTyped?.length || 0)
 
     const { data: items } = await supabase
-    .from('sales_items')
-    .select('bale_id, sales!inner(created_at)')
-    .gte('sales.created_at', dateFrom + 'T00:00:00')
-    .lte('sales.created_at', dateTo + 'T23:59:59')
-    .not('bale_id', 'is', null)
+     .from('sales_items')
+     .select('bale_id, sales!inner(created_at)')
+     .gte('sales.created_at', dateFrom + 'T00:00:00')
+     .lte('sales.created_at', dateTo + 'T23:59:59')
+     .not('bale_id', 'is', null)
 
     const baleIds = [...new Set(items?.map(i => i.bale_id).filter(Boolean))]
     if (baleIds.length > 0) {
-      const { data: bales } = await supabase
-      .from('bales')
-      .select('cost_price')
-      .in('id', baleIds)
-
+      const { data: bales } = await supabase.from('bales').select('cost_price').in('id', baleIds)
       const balesTyped = bales as BaleData[] | null
       const cost = balesTyped?.reduce((s: number, b) => s + (b.cost_price || 0), 0) || 0
       setCosts(cost)
@@ -106,11 +83,11 @@ export default function ReportsPage() {
   const loadCustomerLedger = async () => {
     setLoading(true)
     const { data } = await supabase
-    .from('sales')
-    .select(`*, sales_items(item_description, original_price, paid_amount, status)`)
-    .eq('customer_id', selectedCustomer)
-    .order('created_at', { ascending: false })
-    .limit(50)
+     .from('sales')
+     .select(`*, sales_items(item_description, original_price, paid_amount, status)`)
+     .eq('customer_id', selectedCustomer)
+     .order('created_at', { ascending: false })
+     .limit(50)
     setCustomerSales((data as CustomerSale[]) || [])
     setLoading(false)
   }
@@ -118,10 +95,10 @@ export default function ReportsPage() {
   const loadCashierReport = async () => {
     setLoading(true)
     const { data } = await supabase
-    .from('sales')
-    .select('user_id, paid_amount, created_at')
-    .gte('created_at', dateFrom + 'T00:00:00')
-    .lte('created_at', dateTo + 'T23:59:59')
+     .from('sales')
+     .select('user_id, paid_amount, created_at')
+     .gte('created_at', dateFrom + 'T00:00:00')
+     .lte('created_at', dateTo + 'T23:59:59')
 
     const dataTyped = data as { user_id: string; paid_amount: number; created_at: string }[] | null
     const grouped = dataTyped?.reduce((acc: Record<string, { total: number; count: number }>, sale) => {
@@ -165,25 +142,29 @@ export default function ReportsPage() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
-      {/* FIXED: px-4 py-6 pb-28 for spacing */}
       <div className="px-4 py-6 pb-28 max-w-4xl mx-auto">
 
-        {/* FIXED: Header with proper spacing */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">Reports</h1>
-          <button onClick={exportToCSV} className="bg-green-600 px-5 py-2.5 rounded-xl text-sm font-semibold">
-            Export CSV
-          </button>
+        {/* FIXED: Responsive header - stack on mobile, row on desktop */}
+        <div className="mb-6">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-5">
+            <h1 className="text-2xl font-bold">Reports</h1>
+            <button
+              onClick={exportToCSV}
+              className="bg-green-600 px-5 py-3 rounded-xl text-sm font-semibold w-full sm:w-auto"
+            >
+              Export CSV
+            </button>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex gap-2 bg-gray-800 p-1.5 rounded-xl">
+            <button onClick={() => setTab('daily')} className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${tab==='daily'?'bg-purple-600':'text-gray-400'}`}>Daily P&L</button>
+            <button onClick={() => setTab('customers')} className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${tab==='customers'?'bg-purple-600':'text-gray-400'}`}>Customers</button>
+            <button onClick={() => setTab('cashiers')} className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${tab==='cashiers'?'bg-purple-600':'text-gray-400'}`}>Cashiers</button>
+          </div>
         </div>
 
-        {/* FIXED: Tabs with gap-2 */}
-        <div className="flex gap-2 mb-5 bg-gray-800 p-1.5 rounded-xl">
-          <button onClick={() => setTab('daily')} className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition ${tab==='daily'?'bg-purple-600':'text-gray-400'}`}>Daily P&L</button>
-          <button onClick={() => setTab('customers')} className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition ${tab==='customers'?'bg-purple-600':'text-gray-400'}`}>Customers</button>
-          <button onClick={() => setTab('cashiers')} className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition ${tab==='cashiers'?'bg-purple-600':'text-gray-400'}`}>Cashiers</button>
-        </div>
-
-        {/* FIXED: Date inputs with pr-10 for arrow space */}
+        {/* Date inputs */}
         <div className="grid grid-cols-2 gap-3 mb-5">
           <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
             className="bg-gray-800 p-3 pr-10 rounded-xl text-sm text-white" />
@@ -196,7 +177,6 @@ export default function ReportsPage() {
           <div>
             {loading? <div className="text-center py-20 text-gray-400">Loading...</div> : (
               <>
-                {/* FIXED: gap-4 + p-5 cards */}
                 <div className="grid grid-cols-2 gap-4 mb-5">
                   <div className="bg-gray-800 p-5 rounded-xl">
                     <div className="text-gray-400 text-xs mb-1">REVENUE</div>
@@ -206,8 +186,6 @@ export default function ReportsPage() {
                     <div className="text-gray-400 text-xs mb-1">BALE COSTS</div>
                     <div className="text-2xl font-bold text-red-400">KES {costs.toLocaleString()}</div>
                   </div>
-
-                  {/* FIXED: leading-tight + spacing */}
                   <div className="bg-gray-800 p-5 rounded-xl col-span-2 border-2 border-purple-600">
                     <div className="text-gray-400 text-xs mb-1">GROSS PROFIT</div>
                     <div className={`text-3xl font-bold leading-tight ${profit >= 0? 'text-green-400' : 'text-red-400'}`}>
@@ -258,7 +236,7 @@ export default function ReportsPage() {
                         <div className="text-xs text-gray-400">{new Date(s.created_at).toLocaleDateString('en-KE')}</div>
                         <div className="col-span-2 truncate">{i.item_description}</div>
                         <div className="text-right">KES {i.original_price.toLocaleString()}</div>
-                        <div className={`text-right font-medium ${i.original_price - i.paid_amount > 0?'text-orange-400':''}`}>
+                        <div className={`text-right font-medium ${i.original_price - i.paid_amount > 0? 'text-orange-400' : ''}`}>
                           KES {(i.original_price - i.paid_amount).toLocaleString()}
                         </div>
                       </div>
@@ -293,7 +271,7 @@ export default function ReportsPage() {
         )}
       </div>
 
-      {/* FIXED: Bottom nav with bigger tap area */}
+      {/* Bottom nav */}
       <div className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700">
         <div className="flex justify-around py-3.5">
           <button onClick={() => router.push('/sales/new')} className="flex flex-col items-center text-gray-400 text-xs gap-1">
