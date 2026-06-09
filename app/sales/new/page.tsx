@@ -1,9 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { createClient } from '@/utils/supabase/client'
+import { supabase } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
-
-const supabase = createClient()
 
 type Customer = { id: string, name: string, phone: string }
 type Bale = { id: string, bale_name: string }

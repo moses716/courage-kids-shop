@@ -1,12 +1,11 @@
 'use client'
-import { createClient } from '@/utils/supabase/client'
+import { supabase } from '@/utils/supabase/client'
 import { useRouter, useParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { ArrowLeft, Save, Users, Trash2, MessageCircle } from 'lucide-react'
 import Navbar from '@/components/navbar'
 
 export default function EditCustomerPage() {
-  const supabase = createClient()
   const router = useRouter()
   const params = useParams()
   const customerId = params.id as string

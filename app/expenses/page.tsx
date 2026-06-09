@@ -1,11 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { createClient } from '@/utils/supabase/client'
+import { supabase } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2, DollarSign, Calendar } from 'lucide-react'
 import Navbar from '@/components/navbar'
-
-const supabase = createClient()
 
 type Expense = {
   id: string

@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { createClient } from '@/utils/supabase/client' // FIXED: use same client as NewSalePage
+import { supabase } from '@/utils/supabase/client' // FIXED: use same client as NewSalePage
 import { Save } from 'lucide-react'
 
 type Settings = {
@@ -11,7 +11,6 @@ type Settings = {
 }
 
 export default function SettingsPage() {
-  const supabase = createClient() // FIXED
   const [settings, setSettings] = useState<Settings | null>(null)
   const [shopName, setShopName] = useState('')
   const [paybill, setPaybill] = useState('')

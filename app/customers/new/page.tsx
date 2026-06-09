@@ -1,140 +1,179 @@
 'use client'
-import { createClient } from '@/utils/supabase/client'
-import { useRouter } from 'next/navigation'
+export const dynamic = 'force-dynamic'
+
 import { useState } from 'react'
-import { ArrowLeft, Save, Phone, User, MessageCircle, MapPin, Star, StickyNote } from 'lucide-react'
-import Navbar from '@/components/navbar'
+import { supabase } from '@/utils/supabase/client'
+import { useRouter } from 'next/navigation'
 
 export default function NewCustomerPage() {
-  const supabase = createClient()
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
   const [form, setForm] = useState({
-    name: '', phone: '', whatsapp_name: '', tiktok_name: '',
-    delivery_location: '', address: '', customer_type: 'regular', notes: ''
+    name: '',
+    phone: '',
+    tiktok: '',
+    matatu_gani: '',
+    number_plate: '',
+    address: '',
+    notes: ''
   })
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setForm({...form, [e.target.name]: e.target.value })
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+    setError('')
+    setSuccess('')
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError ||!user) {
-      router.push('/pos')
-      return
-    }
+    try {
+      const { data: userData } = await supabase.auth.getUser()
+      if (!userData.user) {
+        router.push('/login')
+        return
+      }
 
-    if (!form.name.trim() ||!form.phone.trim()) {
-      alert('Customer name and phone are required')
+      const { error } = await supabase
+        .from('customers')
+        .insert({
+          ...form,
+          user_id: userData.user.id,
+          created_at: new Date().toISOString()
+        })
+
+      if (error) throw error
+
+      setSuccess('Customer added successfully!')
+      setTimeout(() => router.push('/customers'), 1500)
+      
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
       setLoading(false)
-      return
     }
-
-    const { error } = await supabase.from('customers').insert([{
-      user_id: user.id,
-      name: form.name.trim(),
-      phone: form.phone.trim(),
-      whatsapp_name: form.whatsapp_name || null,
-      tiktok_name: form.tiktok_name || null,
-      delivery_location: form.delivery_location || null,
-      address: form.address || null,
-      customer_type: form.customer_type,
-      notes: form.notes || null,
-      total_spent: 0,
-      total_purchases: 0,
-      loyalty_points: 0,
-      is_active: true
-    }])
-
-    if (error) {
-      alert('Error: ' + error.message)
-      setLoading(false)
-      return
-    }
-
-    alert('Customer added successfully!')
-    router.push('/customers')
   }
 
-  const inputClass = "w-full px-4 py-3.5 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-base text-gray-900 bg-white"
-  const labelClass = "text-sm font-medium mb-2 flex items-center gap-2 text-gray-700"
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navbar />
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
+      <div className="max-w-2xl mx-auto">
+        <h1 className="text-2xl font-bold text-gray-900 mb-6">Add New Customer</h1>
 
-      {/* FIXED: Single header + padding */}
-      <div className="px-4 py-6 max-w-2xl mx-auto">
-        <div className="flex items-center gap-3 mb-6">
-          <button onClick={() => router.push('/customers')} className="p-2 hover:bg-gray-100 rounded-lg">
-            <ArrowLeft size={24} />
-          </button>
-          <h1 className="text-xl font-bold text-gray-900">Add Customer</h1>
-        </div>
+        {error && <div className="bg-red-100 text-red-700 p-4 rounded-lg mb-4">{error}</div>}
+        {success && <div className="bg-green-100 text-green-700 p-4 rounded-lg mb-4">{success}</div>}
 
-        {/* FIXED: space-y-5 + pb-8 for bottom spacing */}
-        <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border-gray-100 p-6 space-y-5 pb-8">
-
+        <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border-gray-200 p-6 space-y-4">
           <div>
-            <label className={labelClass}><User size={16} /> Customer Name *</label>
-            <input type="text" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})}
-              className={inputClass} placeholder="e.g. Mary Wanjiku" required />
+            <label className="block text-sm font-medium text-gray-700 mb-2">Customer Name *</label>
+            <input
+              type="text"
+              name="name"
+              value={form.name}
+              onChange={handleChange}
+              required
+              className="w-full border-gray-300 rounded-lg px-4 py-3 text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="John Doe"
+            />
           </div>
 
           <div>
-            <label className={labelClass}><Phone size={16} /> Phone Number *</label>
-            <input type="tel" value={form.phone} onChange={(e) => setForm({...form, phone: e.target.value})}
-              className={inputClass} placeholder="07XX XXX" required />
+            <label className="block text-sm font-medium text-gray-700 mb-2">Phone *</label>
+            <input
+              type="tel"
+              name="phone"
+              value={form.phone}
+              onChange={handleChange}
+              required
+              className="w-full border-gray-300 rounded-lg px-4 py-3 text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="0712345678"
+            />
           </div>
 
           <div>
-            <label className={labelClass}><MessageCircle size={16} /> WhatsApp Name</label>
-            <input type="text" value={form.whatsapp_name} onChange={(e) => setForm({...form, whatsapp_name: e.target.value})}
-              className={inputClass} placeholder="Name on WhatsApp" />
+            <label className="block text-sm font-medium text-gray-700 mb-2">TikTok Handle</label>
+            <input
+              type="text"
+              name="tiktok"
+              value={form.tiktok}
+              onChange={handleChange}
+              className="w-full border-gray-300 rounded-lg px-4 py-3 text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="@username"
+            />
+          </div>
+
+          {/* Matatu/Gani Section */}
+          <div className="border-t border-gray-200 pt-4 mt-4">
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Delivery / Pickup Info</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Matatu/Gani</label>
+                <input
+                  type="text"
+                  name="matatu_gani"
+                  value={form.matatu_gani}
+                  onChange={handleChange}
+                  className="w-full border-gray-300 rounded-lg px-4 py-3 text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g. KBS, Super Metro, Direct"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Number Plate</label>
+                <input
+                  type="text"
+                  name="number_plate"
+                  value={form.number_plate}
+                  onChange={handleChange}
+                  className="w-full border-gray-300 rounded-lg px-4 py-3 text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 uppercase"
+                  placeholder="KCA 123A"
+                />
+              </div>
+            </div>
           </div>
 
           <div>
-            <label className={labelClass}><Star size={16} /> TikTok Name</label>
-            <input type="text" value={form.tiktok_name} onChange={(e) => setForm({...form, tiktok_name: e.target.value})}
-              className={inputClass} placeholder="@tiktok_username" />
+            <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
+            <input
+              type="text"
+              name="address"
+              value={form.address}
+              onChange={handleChange}
+              className="w-full border-gray-300 rounded-lg px-4 py-3 text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Nairobi, Kenya"
+            />
           </div>
 
           <div>
-            <label className={labelClass}><MapPin size={16} /> Address/Area</label>
-            <input type="text" value={form.address} onChange={(e) => setForm({...form, address: e.target.value})}
-              className={inputClass} placeholder="e.g. Eldoret Town" />
+            <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+            <textarea
+              name="notes"
+              value={form.notes}
+              onChange={handleChange}
+              rows={3}
+              className="w-full border-gray-300 rounded-lg px-4 py-3 text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Any notes about this customer..."
+            />
           </div>
 
-          <div>
-            <label className={labelClass}><MapPin size={16} /> Delivery Location</label>
-            <textarea value={form.delivery_location} onChange={(e) => setForm({...form, delivery_location: e.target.value})}
-              className={inputClass} rows={2} placeholder="Detailed delivery instructions" />
-          </div>
-
-          <div>
-            <label className={labelClass}><Star size={16} /> Customer Type</label>
-            <select value={form.customer_type} onChange={(e) => setForm({...form, customer_type: e.target.value})} className={inputClass}>
-              <option value="regular">Regular</option>
-              <option value="vip">VIP</option>
-              <option value="wholesale">Wholesale</option>
-            </select>
-          </div>
-
-          <div>
-            <label className={labelClass}><StickyNote size={16} /> Notes</label>
-            <textarea value={form.notes} onChange={(e) => setForm({...form, notes: e.target.value})}
-              className={inputClass} rows={3} placeholder="Any special notes..." />
-          </div>
-
-          {/* FIXED: Equal height buttons + gap */}
           <div className="flex gap-3 pt-4">
-            <button type="button" onClick={() => router.push('/customers')}
-              className="flex-1 py-3.5 border-gray-300 rounded-xl hover:bg-gray-50 font-medium text-gray-900">
+            <button
+              type="button"
+              onClick={() => router.push('/customers')}
+              className="flex-1 px-6 py-3 border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 min-h-12"
+            >
               Cancel
             </button>
-            <button type="submit" disabled={loading}
-              className="flex-1 py-3.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-medium flex items-center justify-center gap-2 disabled:opacity-50">
-              <Save size={18} /> {loading? 'Saving...' : 'Save Customer'}
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 min-h-12"
+            >
+              {loading ? 'Saving...' : 'Save Customer'}
             </button>
           </div>
         </form>

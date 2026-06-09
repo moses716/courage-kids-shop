@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { createClient } from '@/utils/supabase/client'
+import { supabase } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Save, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
@@ -17,7 +17,6 @@ export default function NewProductPage() {
     e.preventDefault()
     setLoading(true)
     
-    const supabase = createClient()
     const authResult = await supabase.auth.getUser()
     const user = authResult.data.user
     

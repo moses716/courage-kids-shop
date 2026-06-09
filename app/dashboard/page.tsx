@@ -1,12 +1,11 @@
 'use client'
-import { createClient } from '@/utils/supabase/client'
+import { supabase } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { ShoppingBag, Users, DollarSign, Package, LogOut } from 'lucide-react'
 import Link from 'next/link'
 
 export default function DashboardPage() {
-  const supabase = createClient()
   const router = useRouter()
   const [stats, setStats] = useState({
     todaySales: 0,

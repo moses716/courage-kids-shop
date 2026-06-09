@@ -1,9 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { createClient } from '@/utils/supabase/client'
+import { supabase } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
-
-const supabase = createClient()
 
 type SaleItem = {
   id: string
@@ -56,15 +54,15 @@ export default function MySalesPage() {
       setLoading(true)
       const { data } = await supabase.auth.getUser()
       const user = data.user
-      
+
       if (!user) {
         router.push('/login')
         return
       }
 
       const { data: salesData, error } = await supabase
-        .from('sales')
-        .select(`
+       .from('sales')
+       .select(`
           id,
           created_at,
           total_amount,
@@ -74,8 +72,8 @@ export default function MySalesPage() {
           customers (id, name, phone),
           sales_items (id, item_description, bale_source, original_price, paid_amount, status)
         `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
+       .eq('user_id', user.id)
+       .order('created_at', { ascending: false })
 
       if (error) throw error
 
@@ -101,7 +99,7 @@ export default function MySalesPage() {
           })
         })
       })
-      
+
       setSales(flatData)
     } catch (err: any) {
       setError(err.message)
@@ -110,43 +108,61 @@ export default function MySalesPage() {
     }
   }
 
-  if (loading) return <div className="p-6">Loading sales...</div>
-  if (error) return <div className="p-6 text-red-600">Error: {error}</div>
+  if (loading) return <div className="p-6 min-h-screen bg-gray-50 text-gray-900">Loading sales...</div>
+  if (error) return <div className="p-6 min-h-screen bg-gray-50 text-red-600">Error: {error}</div>
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">My Sales</h1>
-      
-      {sales.length === 0 ? (
-        <p>No sales yet. Go to POS to make first sale.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full border-gray-300">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="border border-gray-300 px-4 py-2 text-left">Date</th>
-                <th className="border border-gray-300 px-4 py-2 text-left">Customer</th>
-                <th className="border border-gray-300 px-4 py-2 text-left">Item</th>
-                <th className="border border-gray-300 px-4 py-2 text-left">Bale</th>
-                <th className="border border-gray-300 px-4 py-2 text-right">Price</th>
-                <th className="border border-gray-300 px-4 py-2 text-left">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sales.map(item => (
-                <tr key={item.itemId}>
-                  <td className="border border-gray-300 px-4 py-2">{new Date(item.saleCreatedAt).toLocaleDateString()}</td>
-                  <td className="border border-gray-300 px-4 py-2">{item.customerName}</td>
-                  <td className="border border-gray-300 px-4 py-2">{item.itemDescription}</td>
-                  <td className="border border-gray-300 px-4 py-2">{item.baleSource}</td>
-                  <td className="border border-gray-300 px-4 py-2 text-right">KES {item.originalPrice}</td>
-                  <td className="border border-gray-300 px-4 py-2">{item.itemStatus}</td>
+    <div className="min-h-screen bg-gray-50 overflow-x-hidden">
+      <div className="p-4 sm:p-6 w-full max-w-screen">
+        <h1 className="text-2xl font-bold mb-4 text-gray-900">My Sales</h1>
+
+        {sales.length === 0? (
+          <div className="bg-white rounded-xl shadow p-12 text-center">
+            <p className="text-gray-500 mb-4">No sales yet. Go to POS to make first sale.</p>
+            <button
+              onClick={() => router.push('/pos')}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 min-h-12 text-base"
+            >
+              Go to POS
+            </button>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl shadow overflow-x-auto">
+            <table className="min-w-lg w-full text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="border-gray-200 border-b px-4 py-3 text-left text-gray-900 font-semibold">Date</th>
+                  <th className="border-gray-200 border-b px-4 py-3 text-left text-gray-900 font-semibold">Customer</th>
+                  <th className="border-gray-200 border-b px-4 py-3 text-left text-gray-900 font-semibold">Item</th>
+                  <th className="border-gray-200 border-b px-4 py-3 text-left text-gray-900 font-semibold">Bale</th>
+                  <th className="border-gray-200 border-b px-4 py-3 text-right text-gray-900 font-semibold">Price</th>
+                  <th className="border-gray-200 border-b px-4 py-3 text-left text-gray-900 font-semibold">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {sales.map(item => (
+                  <tr key={item.itemId} className="hover:bg-gray-50">
+                    <td className="border-gray-200 border-b px-4 py-3 text-gray-900">{new Date(item.saleCreatedAt).toLocaleDateString()}</td>
+                    <td className="border-gray-200 border-b px-4 py-3 text-gray-900">{item.customerName}</td>
+                    <td className="border-gray-200 border-b px-4 py-3 text-gray-900">{item.itemDescription}</td>
+                    <td className="border-gray-200 border-b px-4 py-3 text-gray-700">{item.baleSource || '-'}</td>
+                    <td className="border-gray-200 border-b px-4 py-3 text-right font-semibold text-gray-900">KES {item.originalPrice.toLocaleString()}</td>
+                    <td className="border-gray-200 border-b px-4 py-3">
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                        item.itemStatus === 'Paid' || item.itemStatus === 'Cleared'
+                         ? 'bg-green-100 text-green-700'
+                          : 'bg-orange-100 text-orange-700'
+                      }`}>
+                        {item.itemStatus}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

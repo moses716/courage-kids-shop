@@ -2,14 +2,10 @@
 export const dynamic = 'force-dynamic'
 
 import { useState } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
+import { supabase } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 
-export default function NewBalePage() {
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+export default function NewBalePage() { // <- added () here
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -40,8 +36,8 @@ export default function NewBalePage() {
       if (!user) throw new Error('You must be logged in')
 
       const { error: insertError } = await supabase
-      .from('bales')
-      .insert({
+       .from('bales')
+       .insert({
           user_id: user.id,
           bale_name: form.bale_name,
           bale_type: form.bale_type,
