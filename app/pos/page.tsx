@@ -18,6 +18,7 @@ type Stats = {
   weeklySales: number
   totalBales: number
   totalCustomers: number
+  itemsLeft: number  // Added this
 }
 
 export default function Dashboard() {
@@ -30,7 +31,8 @@ export default function Dashboard() {
     todaySales: 0,
     weeklySales: 0,
     totalBales: 0,
-    totalCustomers: 0
+    totalCustomers: 0,
+    itemsLeft: 0  // Added this
   })
   const [recentSales, setRecentSales] = useState<Sale[]>([])
   const [mounted, setMounted] = useState(false)
@@ -69,7 +71,7 @@ export default function Dashboard() {
     setSessionOpen(!!data)
     
     if (data) {
-      await fetchData()
+      await fetchData(userId)
     }
   }
 
@@ -100,33 +102,43 @@ export default function Dashboard() {
     }
     
     setSessionOpen(true)
-    await fetchData()
+    await fetchData(user.id)
     setSessionLoading(false)
   }
 
-  const fetchData = async (): Promise<void> => {
+  const fetchData = async (userId: string): Promise<void> => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     
     const weekAgo = new Date()
     weekAgo.setDate(weekAgo.getDate() - 7)
 
-    const [todaySales, weeklySales, bales, customers, sales] = await Promise.all([
-      supabase.from('sales').select('total_amount').gte('created_at', today.toISOString()).eq('status', 'completed'),
-      supabase.from('sales').select('total_amount').gte('created_at', weekAgo.toISOString()).eq('status', 'completed'),
-      supabase.from('bales').select('id', { count: 'exact', head: true }),
-      supabase.from('customers').select('id', { count: 'exact', head: true }),
-      supabase.from('sales').select('id, created_at, total_amount, status, customers(phone)').order('created_at', { ascending: false }).limit(5)
+    const [todaySales, weeklySales, bales, customers, sales, balesData] = await Promise.all([
+      supabase.from('sales').select('total_amount').gte('created_at', today.toISOString()).eq('status', 'completed').eq('user_id', userId),
+      supabase.from('sales').select('total_amount').gte('created_at', weekAgo.toISOString()).eq('status', 'completed').eq('user_id', userId),
+      supabase.from('bales').select('id', { count: 'exact', head: true }).eq('user_id', userId),
+      supabase.from('customers').select('id', { count: 'exact', head: true }).eq('user_id', userId),
+      supabase.from('sales').select('id, created_at, total_amount, status, customers(phone)').eq('user_id', userId).order('created_at', { ascending: false }).limit(5),
+      // ADDED: Fetch bales with stock data
+      supabase.from('bales').select('items_est, items_sold').eq('user_id', userId).eq('status', 'Open')
     ])
 
     const todayTotal = todaySales.data?.reduce((sum: number, s: { total_amount: number }) => sum + Number(s.total_amount), 0) || 0
     const weekTotal = weeklySales.data?.reduce((sum: number, s: { total_amount: number }) => sum + Number(s.total_amount), 0) || 0
 
+    // ADDED: Calculate total items left
+    const itemsLeft = balesData.data?.reduce((sum: number, bale: { items_est: number | null, items_sold: number | null }) => {
+      const est = bale.items_est ?? 0
+      const sold = bale.items_sold ?? 0
+      return sum + Math.max(0, est - sold)
+    }, 0) ?? 0
+
     setStats({
       todaySales: todayTotal,
       weeklySales: weekTotal,
       totalBales: bales.count || 0,
-      totalCustomers: customers.count || 0
+      totalCustomers: customers.count || 0,
+      itemsLeft: itemsLeft  // Added this
     })
     
     setRecentSales((sales.data as Sale[]) || [])
@@ -215,11 +227,12 @@ export default function Dashboard() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6 mb-8">
                 <StatCard icon={DollarSign} title="Today's Sales" value={`Ksh ${stats.todaySales.toLocaleString()}`} color="green" />
                 <StatCard icon={ShoppingCart} title="Weekly Sales" value={`Ksh ${stats.weeklySales.toLocaleString()}`} color="blue" />
                 <StatCard icon={Package} title="Total Bales" value={stats.totalBales.toString()} color="purple" />
                 <StatCard icon={Users} title="Customers" value={stats.totalCustomers.toString()} color="orange" />
+                <StatCard icon={Package} title="Items Left" value={stats.itemsLeft.toLocaleString()} color="indigo" />
               </div>
 
               <div className="bg-white rounded-xl shadow p-4 sm:p-6 mb-6">
@@ -284,7 +297,8 @@ function StatCard({ icon: Icon, title, value, color }: { icon: any; title: strin
     green: 'text-green-600 bg-green-100',
     blue: 'text-blue-600 bg-blue-100',
     purple: 'text-purple-600 bg-purple-100',
-    orange: 'text-orange-600 bg-orange-100'
+    orange: 'text-orange-600 bg-orange-100',
+    indigo: 'text-indigo-600 bg-indigo-100'  // Added for Items Left
   }
   
   return (

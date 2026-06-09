@@ -10,7 +10,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState({
     todaySales: 0,
     totalCustomers: 0,
-    totalProducts: 0,
+    totalItemsLeft: 0, // Changed from totalProducts
     totalRevenue: 0
   })
   const [loading, setLoading] = useState(true)
@@ -21,12 +21,12 @@ export default function DashboardPage() {
   }, [])
 
   const checkAuth = async () => {
-    const { data: { user }, error: authError } = await supabase.auth.getUser() // FIXED
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError ||!user) router.push('/login')
   }
 
   const fetchStats = async () => {
-    const { data: { user }, error: authError } = await supabase.auth.getUser() // FIXED
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError ||!user) return
 
     const today = new Date().toISOString().split('T')[0]
@@ -44,12 +44,17 @@ export default function DashboardPage() {
      .select('*', { count: 'exact', head: true })
      .eq('user_id', user.id)
 
-    // Total products/bales
-    const { count: productCount } = await supabase
-     .from('products')
-     .select('*', { count: 'exact', head: true })
+    // Total items left in ALL open bales - THIS IS THE FIX
+    const { data: bales } = await supabase
+     .from('bales')
+     .select('items_est, items_sold')
      .eq('user_id', user.id)
+     .eq('status', 'Open')
 
+    const totalItemsLeft = bales?.reduce((sum: number, bale: { items_est: number | null, items_sold: number | null }) => {
+  const left = (bale.items_est ?? 0) - (bale.items_sold ?? 0)
+  return sum + Math.max(0, left)
+}, 0) ?? 0
     // All time revenue
     const { data: allSales } = await supabase
      .from('sales')
@@ -59,7 +64,7 @@ export default function DashboardPage() {
     setStats({
       todaySales: sales?.length || 0,
       totalCustomers: customerCount || 0,
-      totalProducts: productCount || 0,
+      totalItemsLeft: totalItemsLeft, // Now shows 2200 instead of 0
       totalRevenue: allSales?.reduce((sum: number, s: { total_amount: number | string }) => sum + Number(s.total_amount), 0) || 0
     })
     setLoading(false)
@@ -115,8 +120,8 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-2">
               <Package size={32} className="text-purple-600" />
             </div>
-            <p className="text-sm text-gray-500">Products/Bales</p>
-            <p className="text-3xl font-bold">{stats.totalProducts}</p>
+            <p className="text-sm text-gray-500">Items Left in Stock</p> {/* Changed label */}
+            <p className="text-3xl font-bold">{stats.totalItemsLeft.toLocaleString()}</p>
           </div>
 
           <div className="bg-white rounded-xl shadow p-6">

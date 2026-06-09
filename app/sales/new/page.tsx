@@ -3,8 +3,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 
-type Customer = { id: string, name: string, phone: string }
-type Bale = { id: string, bale_name: string }
+type Customer = { id: string; name: string; phone: string }
+type Bale = { id: string; bale_name: string; items_est: number | null; items_sold: number | null }
 type ItemRow = {
   item_description: string
   bale_source: string
@@ -61,7 +61,7 @@ export default function PiecePOS() {
   const loadBales = async () => {
     const { data } = await supabase
      .from('bales')
-     .select('id, bale_name')
+     .select('id, bale_name, items_est, items_sold')
      .eq('status', 'Open')
      .order('created_at', { ascending: false })
     setBales(data || [])
@@ -124,7 +124,7 @@ export default function PiecePOS() {
     }])
   }
 
-  const updateItem = (index: number, field: keyof ItemRow, value: any) => {
+  const updateItem = (index: number, field: keyof ItemRow, value: string | number) => {
     const newItems = [...items]
     newItems[index] = {...newItems[index], [field]: value }
     if (field === 'paid_amount' || field === 'original_price') {
@@ -146,6 +146,14 @@ export default function PiecePOS() {
     setItems(items.filter((_, i) => i!== index))
   }
 
+  const getBaleStockInfo = (baleId: string) => {
+    const bale = bales.find(b => b.id === baleId)
+    if (!bale) return { est: 0, sold: 0, left: 0 }
+    const est = bale.items_est?? 0
+    const sold = bale.items_sold?? 0
+    return { est, sold, left: Math.max(0, est - sold) }
+  }
+
   const totalAmount = items.reduce((s: number, i: ItemRow) => s + (Number(i.original_price) || 0), 0)
   const basePaid = items.reduce((s: number, i: ItemRow) => s + (Number(i.paid_amount) || 0), 0)
   const totalPaid = paymentMethod === 'Split'? cashAmount + otherAmount :
@@ -155,8 +163,18 @@ export default function PiecePOS() {
   const handlePay = async () => {
     if (!selectedCustomer) return alert('Select customer first')
     if (items.some(i =>!i.item_description.trim())) return alert('Fill all item descriptions')
+    if (items.some(i =>!i.bale_id)) return alert('Select bale for all items')
     if (totalAmount <= 0) return alert('Enter at least 1 item with price')
     if (paymentMethod === 'Split' && totalPaid!== totalAmount) return alert('Split amounts must equal total')
+
+    // Validate stock for each bale before saving
+    for (const item of items) {
+      const stock = getBaleStockInfo(item.bale_id)
+      if (stock.left <= 0) {
+        return alert(`${item.bale_source} is out of stock`)
+      }
+    }
+
     setLoading(true)
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError ||!user) {
@@ -164,6 +182,8 @@ export default function PiecePOS() {
       setLoading(false)
       return
     }
+
+    // Create sale
     const { data: sale, error } = await supabase
      .from('sales')
      .insert({
@@ -183,6 +203,8 @@ export default function PiecePOS() {
       setLoading(false)
       return
     }
+
+    // Save items
     const { error: itemsError } = await supabase.from('sales_items').insert(
       items.map(i => ({
         sale_id: sale.id,
@@ -199,6 +221,25 @@ export default function PiecePOS() {
       setLoading(false)
       return
     }
+
+    // Update bale stock - count 1 piece per item row
+    const baleCounts: Record<string, number> = {}
+    items.forEach(item => {
+      if (item.bale_id) {
+        baleCounts[item.bale_id] = (baleCounts[item.bale_id] || 0) + 1
+      }
+    })
+
+    for (const [baleId, count] of Object.entries(baleCounts)) {
+      const bale = bales.find(b => b.id === baleId)
+      if (bale) {
+        await supabase
+         .from('bales')
+         .update({ items_sold: (bale.items_sold?? 0) + count })
+         .eq('id', baleId)
+      }
+    }
+
     printReceipt(sale.id, selectedCustomer, items, totalAmount, totalPaid, totalBalance, paymentMethod)
     setItems([{ item_description: '', bale_source: '', bale_id: '', original_price: 0, paid_amount: 0, status: 'Paid' }])
     setSelectedCustomer(null)
@@ -206,6 +247,7 @@ export default function PiecePOS() {
     setPaymentMethod('Cash')
     setCashAmount(0)
     setOtherAmount(0)
+    loadBales() // Refresh bale stock
     setLoading(false)
   }
 
@@ -279,62 +321,75 @@ export default function PiecePOS() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 w-full max-w-screen">
-        {items.map((item, idx) => (
-          <div key={idx} className="bg-white p-4 rounded-xl border-gray-200 mb-3 shadow-sm">
-            <input
-              placeholder="Item description - e.g. Sylvia Dress"
-              value={item.item_description}
-              onChange={e => updateItem(idx, 'item_description', e.target.value)}
-              className={inputClass + " mb-2"}
-            />
-            <select
-              value={item.bale_id}
-              onChange={e => updateItem(idx, 'bale_id', e.target.value)}
-              className={inputClass + " mb-2 text-sm"}
-            >
-              <option value="">Select Bale Source</option>
-              {bales.map(b => (
-                <option key={b.id} value={b.id}>{b.bale_name}</option>
-              ))}
-            </select>
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <div className="text-xs text-gray-600 mb-1">Price</div>
-                <input
-                  type="number"
-                  value={item.original_price || ''}
-                  onChange={e => updateItem(idx, 'original_price', e.target.value)}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <div className="text-xs text-gray-600 mb-1">Paid</div>
-                <input
-                  type="number"
-                  value={item.paid_amount || ''}
-                  onChange={e => updateItem(idx, 'paid_amount', e.target.value)}
-                  disabled={paymentMethod!== 'Cash'}
-                  className={inputClass + " disabled:opacity-50"}
-                />
-              </div>
-              <div>
-                <div className="text-xs text-gray-600 mb-1">Status</div>
-                <div className={`p-3 rounded text-center text-sm font-bold min-h-12 flex items-center justify-center ${
-                  item.status === 'Paid' || item.status === 'Cleared'
-                   ? 'bg-green-100 text-green-700'
-                    : 'bg-orange-100 text-orange-700'
-                }`}>
-                  {item.status}
+        {items.map((item, idx) => {
+          const stock = getBaleStockInfo(item.bale_id)
+          return (
+            <div key={idx} className="bg-white p-4 rounded-xl border-gray-200 mb-3 shadow-sm">
+              <input
+                placeholder="Item description - e.g. Sylvia Dress"
+                value={item.item_description}
+                onChange={e => updateItem(idx, 'item_description', e.target.value)}
+                className={inputClass + " mb-2"}
+              />
+              <select
+                value={item.bale_id}
+                onChange={e => updateItem(idx, 'bale_id', e.target.value)}
+                className={inputClass + " mb-2 text-sm"}
+              >
+                <option value="">Select Bale Source</option>
+                {bales.map(b => {
+                  const left = Math.max(0, (b.items_est?? 0) - (b.items_sold?? 0))
+                  return (
+                    <option key={b.id} value={b.id}>
+                      {b.bale_name} - {b.items_est} est - {left} left
+                    </option>
+                  )
+                })}
+              </select>
+              {item.bale_id && stock.left < 10 && (
+                <div className="text-xs text-orange-600 mb-2 font-medium">
+                  ⚠️ Only {stock.left} pieces left in {item.bale_source}
+                </div>
+              )}
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <div className="text-xs text-gray-600 mb-1">Price</div>
+                  <input
+                    type="number"
+                    value={item.original_price || ''}
+                    onChange={e => updateItem(idx, 'original_price', e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-600 mb-1">Paid</div>
+                  <input
+                    type="number"
+                    value={item.paid_amount || ''}
+                    onChange={e => updateItem(idx, 'paid_amount', e.target.value)}
+                    disabled={paymentMethod!== 'Cash'}
+                    className={inputClass + " disabled:opacity-50"}
+                  />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-600 mb-1">Status</div>
+                  <div className={`p-3 rounded text-center text-sm font-bold min-h-12 flex items-center justify-center ${
+                    item.status === 'Paid' || item.status === 'Cleared'
+                     ? 'bg-green-100 text-green-700'
+                      : 'bg-orange-100 text-orange-700'
+                  }`}>
+                    {item.status}
+                  </div>
                 </div>
               </div>
+              {items.length > 1 && (
+                <button onClick={() => removeItem(idx)} className="text-red-600 text-xs mt-2 font-medium">
+                  Remove item
+                </button>
+              )}
             </div>
-            {items.length > 1 && (
-              <button onClick={() => removeItem(idx)} className="text-red-600 text-xs mt-2 font-medium">
-                Remove item
-              </button>
-            )}
-          </div>
-        ))}
+          )
+        })}
         <button onClick={addItemRow} className="w-full border-2 border-dashed border-gray-300 p-3 rounded hover:border-blue-500 text-gray-700 font-medium min-h-12">
           + Add Item
         </button>
